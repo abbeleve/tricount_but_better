@@ -1,0 +1,106 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # Never let two deploys touch the server at once.
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Deploy to server
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the frontend build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          # Pinned host key: without this the first connection would trust
+          # whatever answers, which defeats the point of using a key at all.
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Copy application code
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          PORT: ${{ secrets.SSH_PORT || '22' }}
+          ROOT: ${{ secrets.DEPLOY_PATH || '/opt/tricount' }}
+        run: |
+          # --delete is safe here because data lives OUTSIDE app/ and web/:
+          # the database, uploads and .env are siblings, never rsync targets.
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/id_deploy -p $PORT" \
+            --exclude '.venv' --exclude '__pycache__' \
+            src migrations alembic.ini pyproject.toml uv.lock scripts \
+            "$USER@$HOST:$ROOT/app/"
+
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/id_deploy -p $PORT" \
+            frontend/dist/ "$USER@$HOST:$ROOT/web/"
+
+      - name: Migrate and restart
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          PORT: ${{ secrets.SSH_PORT || '22' }}
+          ROOT: ${{ secrets.DEPLOY_PATH || '/opt/tricount' }}
+        run: |
+          ssh -i ~/.ssh/id_deploy -p "$PORT" "$USER@$HOST" bash -seu <<EOF
+            cd "$ROOT/app"
+            export PATH="\$HOME/.local/bin:\$PATH"
+
+            # Back up the database before migrating, so a bad migration is
+            # recoverable. .backup is safe to run while the service is live.
+            if [ -f "$ROOT/var/tricount.db" ]; then
+              mkdir -p "$ROOT/backups"
+              sqlite3 "$ROOT/var/tricount.db" \
+                ".backup '$ROOT/backups/pre-deploy-\$(date +%Y%m%d-%H%M%S).db'"
+              ls -1t "$ROOT/backups"/pre-deploy-*.db | tail -n +11 | xargs -r rm --
+            fi
+
+            uv sync --frozen --no-dev --extra socks
+            set -a; . "$ROOT/.env"; set +a
+            uv run alembic upgrade head
+
+            sudo systemctl restart tricount
+          EOF
+
+      - name: Verify the service came back
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          PORT: ${{ secrets.SSH_PORT || '22' }}
+        run: |
+          ssh -i ~/.ssh/id_deploy -p "$PORT" "$USER@$HOST" bash -seu <<'EOF'
+            for i in $(seq 1 20); do
+              if curl -fsS http://127.0.0.1:8000/api/health | grep -q '"ok"'; then
+                echo "healthy after ${i}s"; exit 0
+              fi
+              sleep 1
+            done
+            echo "service did not become healthy; last 40 log lines:" >&2
+            sudo journalctl -u tricount -n 40 --no-pager >&2
+            exit 1
+          EOF

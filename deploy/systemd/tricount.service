@@ -1,0 +1,46 @@
+[Unit]
+Description=Tricount but better — shared expense API
+Documentation=https://github.com/abbeleve/tricount-but-better
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=tricount
+Group=tricount
+WorkingDirectory=/opt/tricount/app
+
+# Secrets and configuration. Not in git; see deploy/README.md.
+EnvironmentFile=/opt/tricount/.env
+
+# The Claude Code CLI (used by the receipt parser) needs a writable HOME for
+# its own config and session files.
+Environment=HOME=/opt/tricount/home
+Environment=PATH=/opt/tricount/app/.venv/bin:/usr/local/bin:/usr/bin:/bin
+
+# Run the venv's uvicorn directly: no uv resolution on every start, and one
+# less thing that needs network access at boot.
+ExecStart=/opt/tricount/app/.venv/bin/uvicorn \
+    tricount_but_better.main:app \
+    --host 127.0.0.1 --port 8000 \
+    --proxy-headers --forwarded-allow-ips 127.0.0.1
+
+Restart=always
+RestartSec=3
+TimeoutStopSec=20
+
+# --- hardening -------------------------------------------------------------
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+# Everything the service may write to. The code directory stays read-only.
+ReadWritePaths=/opt/tricount/var /opt/tricount/home /opt/tricount/backups
+
+[Install]
+WantedBy=multi-user.target
