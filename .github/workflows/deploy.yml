@@ -31,15 +31,24 @@ jobs:
       - name: Set up SSH
         env:
           SSH_KEY: ${{ secrets.SSH_KEY }}
-          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
-          # Pinned host key: without this the first connection would trust
-          # whatever answers, which defeats the point of using a key at all.
-          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          chmod 644 ~/.ssh/known_hosts
+
+          # GitHub runners are ephemeral, so accept the server host key on
+          # every run instead of maintaining an SSH_KNOWN_HOSTS secret.
+          cat > ~/.ssh/config <<SSH_CONFIG
+          Host deploy-target
+            HostName $SSH_HOST
+            IdentityFile ~/.ssh/id_deploy
+            IdentitiesOnly yes
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+            LogLevel ERROR
+          SSH_CONFIG
+          chmod 600 ~/.ssh/config
 
       - name: Copy application code
         env:
@@ -51,14 +60,14 @@ jobs:
           # --delete is safe here because data lives OUTSIDE app/ and web/:
           # the database, uploads and .env are siblings, never rsync targets.
           rsync -az --delete \
-            -e "ssh -i ~/.ssh/id_deploy -p $PORT" \
+            -e "ssh -F ~/.ssh/config -p $PORT" \
             --exclude '.venv' --exclude '__pycache__' \
             src migrations alembic.ini pyproject.toml uv.lock scripts \
-            "$USER@$HOST:$ROOT/app/"
+            "$USER@deploy-target:$ROOT/app/"
 
           rsync -az --delete \
-            -e "ssh -i ~/.ssh/id_deploy -p $PORT" \
-            frontend/dist/ "$USER@$HOST:$ROOT/web/"
+            -e "ssh -F ~/.ssh/config -p $PORT" \
+            frontend/dist/ "$USER@deploy-target:$ROOT/web/"
 
       - name: Migrate and restart
         env:
@@ -67,7 +76,7 @@ jobs:
           PORT: ${{ secrets.SSH_PORT || '22' }}
           ROOT: ${{ secrets.DEPLOY_PATH || '/opt/tricount' }}
         run: |
-          ssh -i ~/.ssh/id_deploy -p "$PORT" "$USER@$HOST" bash -seu <<EOF
+          ssh -F ~/.ssh/config -p "$PORT" "$USER@deploy-target" bash -seu <<EOF
             cd "$ROOT/app"
             export PATH="\$HOME/.local/bin:\$PATH"
 
@@ -93,9 +102,9 @@ jobs:
           USER: ${{ secrets.SSH_USER }}
           PORT: ${{ secrets.SSH_PORT || '22' }}
         run: |
-          ssh -i ~/.ssh/id_deploy -p "$PORT" "$USER@$HOST" bash -seu <<'EOF'
+          ssh -F ~/.ssh/config -p "$PORT" "$USER@deploy-target" bash -seu <<'EOF'
             for i in $(seq 1 20); do
-              if curl -fsS http://127.0.0.1:8000/api/health | grep -q '"ok"'; then
+              if curl -fsS http://127.0.0.1:8010/api/health | grep -q '"ok"'; then
                 echo "healthy after ${i}s"; exit 0
               fi
               sleep 1

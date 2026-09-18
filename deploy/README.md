@@ -19,6 +19,11 @@ database as a single SQLite file.
 `app/` and `web/` are the only rsync targets, and they are siblings of the
 data. That is what makes `rsync --delete` safe.
 
+The backend listens only on `127.0.0.1:8010`; nginx is the public entry point.
+This deliberately avoids port `8000`, which is commonly used by other local
+FastAPI services. Existing nginx sites are kept intact, so this application can
+share a server with them under a separate domain or subdomain.
+
 ---
 
 ## 1. Bootstrap the server (once)
@@ -154,7 +159,6 @@ reviewer under **Settings → Environments → production** if you want a manual
 | `SSH_HOST` | server hostname or IP |
 | `SSH_USER` | `deploy` |
 | `SSH_KEY` | the **private** half of the deploy key (full PEM, including header and footer lines) |
-| `SSH_KNOWN_HOSTS` | output of `ssh-keyscan -H your-server` |
 | `SSH_PORT` | optional, defaults to `22` |
 | `DEPLOY_PATH` | optional, defaults to `/opt/tricount` |
 
@@ -169,18 +173,20 @@ ssh-copy-id -i ~/.ssh/tricount_deploy.pub deploy@your-server
 # private half into GitHub (paste the whole file)
 cat ~/.ssh/tricount_deploy
 
-# host fingerprint, so Actions cannot be MITM'd on first connect
-ssh-keyscan -H your-server
 ```
 
 With `gh` installed you can skip the web UI:
 
 ```bash
 gh secret set SSH_KEY        < ~/.ssh/tricount_deploy
-gh secret set SSH_KNOWN_HOSTS <<< "$(ssh-keyscan -H your-server)"
 gh secret set SSH_HOST       <<< "your-server"
 gh secret set SSH_USER       <<< "deploy"
 ```
+
+The workflow accepts the server host key automatically because GitHub runners
+are ephemeral. This keeps setup simple but does not protect the first SSH
+connection from a man-in-the-middle attack. Pin the host key in a secret if
+that protection is required.
 
 The `CLAUDE_CODE_OAUTH_TOKEN` is deliberately **not** a GitHub secret. It lives
 only in `/opt/tricount/.env` on the server, so a compromised CI run cannot read

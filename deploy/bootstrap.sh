@@ -96,7 +96,6 @@ visudo -cf /etc/sudoers.d/tricount-deploy
 say "Installing the nginx site"
 install -m 644 "$(dirname "$0")/nginx.conf" /etc/nginx/sites-available/tricount
 ln -sf /etc/nginx/sites-available/tricount /etc/nginx/sites-enabled/tricount
-rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl reload nginx
 
 say "Nightly database backup"

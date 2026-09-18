@@ -22,7 +22,7 @@ Environment=PATH=/opt/tricount/app/.venv/bin:/usr/local/bin:/usr/bin:/bin
 # less thing that needs network access at boot.
 ExecStart=/opt/tricount/app/.venv/bin/uvicorn \
     tricount_but_better.main:app \
-    --host 127.0.0.1 --port 8000 \
+    --host 127.0.0.1 --port 8010 \
     --proxy-headers --forwarded-allow-ips 127.0.0.1
 
 Restart=always
