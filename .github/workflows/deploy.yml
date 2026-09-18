@@ -60,13 +60,13 @@ jobs:
           # --delete is safe here because data lives OUTSIDE app/ and web/:
           # the database, uploads and .env are siblings, never rsync targets.
           rsync -az --delete \
-            -e "ssh -F ~/.ssh/config -p $PORT" \
+            -e "ssh -F $HOME/.ssh/config -p $PORT" \
             --exclude '.venv' --exclude '__pycache__' \
             src migrations alembic.ini pyproject.toml uv.lock scripts \
             "$USER@deploy-target:$ROOT/app/"
 
           rsync -az --delete \
-            -e "ssh -F ~/.ssh/config -p $PORT" \
+            -e "ssh -F $HOME/.ssh/config -p $PORT" \
             frontend/dist/ "$USER@deploy-target:$ROOT/web/"
 
       - name: Migrate and restart
