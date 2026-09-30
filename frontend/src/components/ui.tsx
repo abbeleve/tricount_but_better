@@ -4,7 +4,9 @@
  * Rules held here so screens cannot drift from them:
  *  - a label always sits ABOVE its input; placeholders are examples, never labels
  *  - every control has hover, focus-visible, active and disabled states
- *  - :active nudges the control down 1px so taps feel physical
+ *  - press feedback lands on touch-down, instantly, and eases back on release
+ *  - on a touch screen controls grow to thumb size and inputs to 16px, which
+ *    is also what stops iOS zooming the page when a field takes focus
  *  - loading states are skeletons shaped like the content, not spinners
  */
 
@@ -15,6 +17,16 @@ import { formatMoney } from "../lib/money";
 export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
 }
+
+/**
+ * Press feedback. `active:duration-0` makes the press itself instant, while
+ * the release still eases back over 150ms, because a transition takes its
+ * timing from the state it is heading into.
+ */
+export const PRESS = "transition duration-150 ease-out active:scale-[0.97] active:duration-0";
+
+/** List rows highlight on touch-down, like a native table cell. */
+export const ROW_PRESS = "transition-colors duration-150 active:bg-surface-2 active:duration-0";
 
 /* ------------------------------------------------------------------ button */
 
@@ -52,10 +64,12 @@ export function Button({
       aria-busy={loading || undefined}
       className={cx(
         "inline-flex items-center justify-center gap-2 rounded-control font-medium",
-        "whitespace-nowrap transition-all duration-150",
-        "active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60",
-        "disabled:active:translate-y-0",
-        size === "sm" ? "h-8 px-3 text-[13px]" : "h-10 px-4 text-sm",
+        "whitespace-nowrap",
+        PRESS,
+        "disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100",
+        size === "sm"
+          ? "h-8 px-3 text-[13px] pointer-coarse:h-10 pointer-coarse:px-3.5 pointer-coarse:text-sm"
+          : "h-10 px-4 text-sm pointer-coarse:h-11 pointer-coarse:text-[15px]",
         full && "w-full",
         BUTTON_VARIANTS[variant],
         className,
@@ -105,32 +119,47 @@ export function Field({ label, hint, error, children }: FieldProps) {
   );
 }
 
+/*
+  Height and type size live apart from the rest of the control so a caller can
+  pick a size without two competing utilities on one element -- Tailwind does
+  not promise which of `h-10` and `h-14` wins when both are present.
+*/
 const CONTROL = cx(
-  "h-10 w-full rounded-control border border-line bg-surface px-3 text-sm text-body",
+  "w-full rounded-control border border-line bg-surface px-3 text-body",
   "placeholder:text-subtle transition-colors",
   "hover:border-line-strong focus:border-line-strong",
   "disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-muted",
 );
+const CONTROL_SIZE = "h-10 text-sm pointer-coarse:h-11 pointer-coarse:text-base";
 
 export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...rest} className={cx(CONTROL, className)} />;
+  return <input {...rest} className={cx(CONTROL, CONTROL_SIZE, className)} />;
 }
 
 /** Numeric input: monospaced and right-aligned so amounts line up in a column. */
-export function MoneyInput({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
+export function MoneyInput({
+  className,
+  size = "md",
+  ...rest
+}: Omit<InputHTMLAttributes<HTMLInputElement>, "size"> & { size?: "md" | "lg" }) {
   return (
     <input
       {...rest}
       inputMode="decimal"
       autoComplete="off"
-      className={cx(CONTROL, "tabular text-right", className)}
+      className={cx(
+        CONTROL,
+        size === "lg" ? "h-14 text-2xl font-medium" : CONTROL_SIZE,
+        "tabular text-right",
+        className,
+      )}
     />
   );
 }
 
 export function Select({ className, children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select {...rest} className={cx(CONTROL, "cursor-pointer appearance-none pr-9", className)}
+    <select {...rest} className={cx(CONTROL, CONTROL_SIZE, "cursor-pointer appearance-none pr-9", className)}
       style={{
         backgroundImage:
           "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 8l3-3.5' fill='none' stroke='%2371717a' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E\")",
@@ -148,7 +177,11 @@ export function Textarea({ className, ...rest }: InputHTMLAttributes<HTMLTextAre
   return (
     <textarea
       {...(rest as object)}
-      className={cx(CONTROL, "h-auto min-h-20 resize-y py-2 leading-relaxed", className)}
+      className={cx(
+        CONTROL,
+        "min-h-20 resize-y py-2 text-sm leading-relaxed pointer-coarse:text-base",
+        className,
+      )}
     />
   );
 }

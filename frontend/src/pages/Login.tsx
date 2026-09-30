@@ -32,7 +32,7 @@ export default function Login() {
       <h1 className="mb-1 text-2xl font-semibold tracking-tight text-body">Welcome back</h1>
       <p className="mb-6 text-sm text-muted">Sign in to see what your flat owes you.</p>
 
-      <Card className="p-5">
+      <Card className="p-4 sm:p-5">
         <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
           <FormError message={error} />
           <Field label="Email">
@@ -41,6 +41,10 @@ export default function Login() {
                 id={id}
                 type="email"
                 autoComplete="email"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                enterKeyHint="next"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -54,6 +58,7 @@ export default function Login() {
                 id={id}
                 type="password"
                 autoComplete="current-password"
+                enterKeyHint="go"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

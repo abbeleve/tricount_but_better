@@ -3,10 +3,16 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { Avatar, Button, cx } from "./ui";
 
+/** Matches --bg, so the phone's status bar and browser chrome blend into the header. */
+const THEME_COLOR = { light: "#fafafa", dark: "#09090b" };
+
 function useTheme() {
   const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"));
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", dark ? THEME_COLOR.dark : THEME_COLOR.light);
     try {
       localStorage.setItem("theme", dark ? "dark" : "light");
     } catch {
@@ -16,35 +22,47 @@ function useTheme() {
   return [dark, () => setDark((d) => !d)] as const;
 }
 
-function ThemeToggle() {
-  const [dark, toggle] = useTheme();
+type Theme = ReturnType<typeof useTheme>;
+
+function ThemeIcon({ dark }: { dark: boolean }) {
+  return dark ? (
+    <svg viewBox="0 0 20 20" className="size-4.5" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      <circle cx="10" cy="10" r="3.5" />
+      <path d="M10 2v2m0 12v2M2 10h2m12 0h2M4.5 4.5l1.4 1.4m8.2 8.2 1.4 1.4m0-11-1.4 1.4m-8.2 8.2-1.4 1.4" strokeLinecap="round" />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 20 20" className="size-4.5" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      <path d="M16.5 11.8A7 7 0 0 1 8.2 3.5a7 7 0 1 0 8.3 8.3Z" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ThemeToggle({ theme: [dark, toggle], className }: { theme: Theme; className?: string }) {
   return (
     <button
       onClick={toggle}
       aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
       className={cx(
-        "grid size-9 place-items-center rounded-control text-muted",
-        "transition-colors hover:bg-surface-2 hover:text-body active:translate-y-px",
+        "size-9 place-items-center rounded-control text-muted",
+        "transition-colors hover:bg-surface-2 hover:text-body active:bg-surface-2",
+        className,
       )}
     >
-      {dark ? (
-        <svg viewBox="0 0 20 20" className="size-4.5" fill="none" stroke="currentColor" strokeWidth="1.6">
-          <circle cx="10" cy="10" r="3.5" />
-          <path d="M10 2v2m0 12v2M2 10h2m12 0h2M4.5 4.5l1.4 1.4m8.2 8.2 1.4 1.4m0-11-1.4 1.4m-8.2 8.2-1.4 1.4" strokeLinecap="round" />
-        </svg>
-      ) : (
-        <svg viewBox="0 0 20 20" className="size-4.5" fill="none" stroke="currentColor" strokeWidth="1.6">
-          <path d="M16.5 11.8A7 7 0 0 1 8.2 3.5a7 7 0 1 0 8.3 8.3Z" strokeLinejoin="round" />
-        </svg>
-      )}
+      <ThemeIcon dark={dark} />
     </button>
   );
 }
 
-function AccountMenu() {
+const MENU_ITEM = cx(
+  "flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-body",
+  "transition-colors hover:bg-surface-2 active:bg-surface-2 active:duration-0 pointer-coarse:py-3.5",
+);
+
+function AccountMenu({ theme }: { theme: Theme }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [dark, toggleTheme] = theme;
 
   useEffect(() => {
     if (!open) return;
@@ -67,7 +85,8 @@ function AccountMenu() {
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="flex items-center gap-2 rounded-control p-1 transition-colors hover:bg-surface-2 active:translate-y-px"
+        aria-label="Account"
+        className="-mr-1 flex items-center gap-2 rounded-control p-1 transition-colors hover:bg-surface-2 active:bg-surface-2 active:duration-0 pointer-coarse:p-2"
       >
         <Avatar name={user.display_name} size={28} />
         <span className="hidden max-w-32 truncate text-sm text-body sm:block">
@@ -78,19 +97,37 @@ function AccountMenu() {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-card border border-line bg-surface shadow-lg"
+          className={cx(
+            "absolute right-0 z-50 mt-2 w-60 overflow-hidden rounded-card border border-line bg-surface shadow-lg",
+            // Grows out of the avatar that opened it, not from its own centre.
+            "origin-top-right transition duration-150 ease-out starting:scale-95 starting:opacity-0",
+          )}
         >
           <div className="border-b border-line px-3 py-2.5">
             <p className="truncate text-sm font-medium text-body">{user.display_name}</p>
             <p className="truncate text-[12px] text-muted">{user.email}</p>
           </div>
+          {/* On a phone the header has no room for a toggle; it lives here instead. */}
+          <button
+            role="menuitem"
+            onClick={() => {
+              toggleTheme();
+              setOpen(false);
+            }}
+            className={cx(MENU_ITEM, "sm:hidden")}
+          >
+            <span className="text-muted">
+              <ThemeIcon dark={dark} />
+            </span>
+            {dark ? "Light theme" : "Dark theme"}
+          </button>
           <button
             role="menuitem"
             onClick={() => {
               logout();
               navigate("/login");
             }}
-            className="w-full px-3 py-2.5 text-left text-sm text-body transition-colors hover:bg-surface-2"
+            className={MENU_ITEM}
           >
             Sign out
           </button>
@@ -100,33 +137,97 @@ function AccountMenu() {
   );
 }
 
-export function Header() {
+export interface Back {
+  to: string;
+  label: string;
+}
+
+function Brand({ className }: { className?: string }) {
   return (
-    <header className="sticky top-0 z-40 border-b border-line bg-bg/85 backdrop-blur-md">
-      {/* Capped at 68px: navigation should not eat the viewport. */}
-      <div className="mx-auto flex h-16 max-w-5xl items-center justify-between gap-3 px-4 sm:px-6">
-        <Link to="/" className="flex items-center gap-2.5 rounded-control">
-          <span className="grid size-7 place-items-center rounded-lg bg-ink text-ink-text">
-            <svg viewBox="0 0 20 20" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M4 6h12M4 10h12M4 14h7" />
-            </svg>
-          </span>
-          <span className="text-[15px] font-semibold tracking-tight text-body">Split</span>
-        </Link>
-        <div className="flex items-center gap-1">
-          <ThemeToggle />
-          <AccountMenu />
+    <Link to="/" className={cx("items-center gap-2.5 rounded-control", className)}>
+      <span className="grid size-7 place-items-center rounded-lg bg-ink text-ink-text">
+        <svg viewBox="0 0 20 20" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <path d="M4 6h12M4 10h12M4 14h7" />
+        </svg>
+      </span>
+      <span className="text-[15px] font-semibold tracking-tight text-body">Split</span>
+    </Link>
+  );
+}
+
+/** Phone navigation: the way out sits where the thumb and the eye expect it. */
+function BackButton({ back, className }: { back: Back; className?: string }) {
+  return (
+    <Link
+      to={back.to}
+      className={cx(
+        "-ml-2 h-11 min-w-0 items-center gap-0.5 rounded-control pl-1 pr-3",
+        "text-[15px] font-medium text-body transition-opacity duration-150 active:opacity-50 active:duration-0",
+        className,
+      )}
+    >
+      <svg viewBox="0 0 20 20" className="size-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M12.5 4.5 7 10l5.5 5.5" />
+      </svg>
+      <span className="truncate">{back.label}</span>
+    </Link>
+  );
+}
+
+export function Header({ back }: { back?: Back }) {
+  const theme = useTheme();
+  return (
+    <header className="material sticky top-0 z-40 border-b border-line pt-[env(safe-area-inset-top)]">
+      <div className="gutter mx-auto flex h-(--header-h) max-w-5xl items-center justify-between gap-3">
+        {back ? (
+          <>
+            <BackButton back={back} className="flex sm:hidden" />
+            <Brand className="hidden sm:flex" />
+          </>
+        ) : (
+          <Brand className="flex" />
+        )}
+        <div className="flex shrink-0 items-center gap-1">
+          <ThemeToggle theme={theme} className="hidden sm:grid" />
+          <AccountMenu theme={theme} />
         </div>
       </div>
     </header>
   );
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+/**
+ * `back` puts a back button in the phone header (and a back link above the
+ * content on wider screens). `bar` is pinned to the bottom edge above the home
+ * indicator -- the place a thumb already is -- for a page's primary action.
+ */
+export function AppShell({
+  children,
+  back,
+  bar,
+}: {
+  children: React.ReactNode;
+  back?: Back;
+  bar?: React.ReactNode;
+}) {
   return (
     <div className="min-h-dvh bg-bg">
-      <Header />
-      <main className="mx-auto max-w-5xl px-4 pb-24 pt-6 sm:px-6 sm:pb-16">{children}</main>
+      <Header back={back} />
+      <main
+        className={cx(
+          "gutter mx-auto max-w-5xl pt-5 sm:pt-6",
+          // Clearance for the floating add button and the home indicator.
+          bar ? "pb-6" : "pb-[calc(6rem+env(safe-area-inset-bottom))] sm:pb-16",
+        )}
+      >
+        {back && <BackLink to={back.to}>{back.label}</BackLink>}
+        {children}
+      </main>
+      {bar && (
+        <div className="material sticky bottom-0 z-30 border-t border-line pb-[env(safe-area-inset-bottom)]">
+          <div className="gutter mx-auto max-w-5xl py-3">{bar}</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -134,7 +235,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 /** Centred column for signed-out screens. */
 export function AuthShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid min-h-dvh place-items-center bg-bg px-4 py-10">
+    <div className="gutter grid min-h-dvh place-items-center bg-bg pb-[max(2.5rem,env(safe-area-inset-bottom))] pt-[max(2.5rem,env(safe-area-inset-top))]">
       <div className="w-full max-w-sm">{children}</div>
     </div>
   );
@@ -150,9 +251,9 @@ export function PageTitle({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+    <div className="mb-5 flex flex-wrap items-end justify-between gap-3 sm:mb-6">
       <div className="min-w-0">
-        <h1 className="truncate text-2xl font-semibold tracking-tight text-body sm:text-3xl">
+        <h1 className="truncate text-[1.75rem] font-semibold leading-tight tracking-tight text-body sm:text-3xl">
           {title}
         </h1>
         {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}
@@ -162,11 +263,12 @@ export function PageTitle({
   );
 }
 
+/** Wide screens only: on a phone the header's back button does this job. */
 export function BackLink({ to, children }: { to: string; children: React.ReactNode }) {
   return (
     <Link
       to={to}
-      className="mb-4 inline-flex items-center gap-1.5 text-[13px] text-muted transition-colors hover:text-body"
+      className="mb-4 hidden items-center gap-1.5 text-[13px] text-muted transition-colors hover:text-body sm:inline-flex"
     >
       <svg viewBox="0 0 16 16" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <path d="M10 3 5 8l5 5" />

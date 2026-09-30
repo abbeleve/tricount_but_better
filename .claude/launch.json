@@ -7,6 +7,19 @@
       "runtimeArgs": ["run", "dev"],
       "port": 5173,
       "cwd": "frontend"
+    },
+    {
+      "name": "api-8010",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "uvicorn", "tricount_but_better.main:app", "--reload", "--port", "8010"],
+      "port": 8010
+    },
+    {
+      "name": "web-5180",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "API_URL=http://127.0.0.1:8010 exec npm run dev -- --port 5180 --strictPort"],
+      "port": 5180,
+      "cwd": "frontend"
     }
   ]
 }

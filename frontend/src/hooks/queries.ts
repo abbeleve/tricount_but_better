@@ -141,3 +141,13 @@ export function useSettleUp(teamId: string) {
     onSuccess: invalidate,
   });
 }
+
+/** Takes back a "Mark paid" -- one mistaken tap on a phone must not stick. */
+export function useDeleteSettlement(teamId: string) {
+  const invalidate = useTeamInvalidation(teamId);
+  return useMutation({
+    mutationFn: (settlementId: string) =>
+      api<void>(`/teams/${teamId}/settlements/${settlementId}`, { method: "DELETE" }),
+    onSuccess: invalidate,
+  });
+}

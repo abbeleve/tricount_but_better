@@ -38,7 +38,7 @@ export default function Register() {
       <h1 className="mb-1 text-2xl font-semibold tracking-tight text-body">Create an account</h1>
       <p className="mb-6 text-sm text-muted">Then invite the people you live with.</p>
 
-      <Card className="p-5">
+      <Card className="p-4 sm:p-5">
         <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
           <FormError message={error} />
           <Field label="Your name" hint="This is how your flatmates will see you.">
@@ -46,6 +46,8 @@ export default function Register() {
               <Input
                 id={id}
                 autoComplete="name"
+                autoCapitalize="words"
+                enterKeyHint="next"
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -59,6 +61,10 @@ export default function Register() {
                 id={id}
                 type="email"
                 autoComplete="email"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                enterKeyHint="next"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -76,6 +82,7 @@ export default function Register() {
                 id={id}
                 type="password"
                 autoComplete="new-password"
+                enterKeyHint="go"
                 required
                 minLength={MIN_PASSWORD}
                 value={password}

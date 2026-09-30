@@ -13,6 +13,7 @@ import {
   Money,
   Select,
   Skeleton,
+  cx,
 } from "../components/ui";
 import { keys, useServerConfig, useTeams } from "../hooks/queries";
 import { ApiError, api } from "../lib/api";
@@ -29,7 +30,10 @@ function TeamCard({ team }: { team: TeamSummary }) {
   return (
     <Link
       to={`/teams/${team.id}`}
-      className="card group flex items-center justify-between gap-4 p-4 transition-all hover:border-line-strong active:translate-y-px"
+      className={cx(
+        "card flex select-none items-center justify-between gap-4 p-4 hover:border-line-strong",
+        "transition duration-150 ease-out active:scale-[0.98] active:duration-0",
+      )}
     >
       <div className="min-w-0">
         <p className="truncate font-medium text-body">{team.name}</p>
@@ -65,7 +69,7 @@ function NewTeamForm({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <Card className="p-5">
+    <Card className="p-4 sm:p-5">
       <form onSubmit={submit} className="flex flex-col gap-4">
         <FormError message={create.error instanceof ApiError ? create.error.message : null} />
         <Field label="Team name" hint="A flat, a trip, a household — whatever you share.">
@@ -74,6 +78,8 @@ function NewTeamForm({ onDone }: { onDone: () => void }) {
               id={id}
               autoFocus
               required
+              autoCapitalize="words"
+              enterKeyHint="done"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Flat 42"

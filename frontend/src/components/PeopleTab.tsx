@@ -7,7 +7,20 @@ import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { Invite, TeamDetail } from "../lib/types";
 
-function InviteRow({ invite, teamId, canRevoke }: { invite: Invite; teamId: string; canRevoke: boolean }) {
+/** Phones have a share sheet; sending the link straight to a chat beats copy-and-switch-apps. */
+const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
+
+function InviteRow({
+  invite,
+  teamId,
+  teamName,
+  canRevoke,
+}: {
+  invite: Invite;
+  teamId: string;
+  teamName: string;
+  canRevoke: boolean;
+}) {
   const client = useQueryClient();
   const [copied, setCopied] = useState(false);
   const url = `${window.location.origin}/join/${invite.code}`;
@@ -28,24 +41,43 @@ function InviteRow({ invite, teamId, canRevoke }: { invite: Invite; teamId: stri
     }
   }
 
+  async function share() {
+    try {
+      await navigator.share({ title: `Join ${teamName}`, text: `Join ${teamName} to split costs`, url });
+    } catch {
+      /* dismissing the share sheet rejects; that is not an error worth showing */
+    }
+  }
+
   return (
-    <li className="flex flex-wrap items-center gap-2 py-3 first:pt-0">
+    <li className="flex flex-col gap-2 py-3 first:pt-0 sm:flex-row sm:items-center">
       <code className="min-w-0 flex-1 truncate rounded-control bg-surface-2 px-2.5 py-1.5 text-[12px] text-muted">
         {url}
       </code>
       {invite.revoked ? (
         <Chip>expired</Chip>
       ) : (
-        <>
+        <div className="flex items-center gap-2">
+          {canShare && (
+            <Button size="sm" onClick={share}>
+              Share
+            </Button>
+          )}
           <Button size="sm" variant="secondary" onClick={copy}>
             {copied ? "Copied" : "Copy"}
           </Button>
           {canRevoke && (
-            <Button size="sm" variant="ghost" loading={revoke.isPending} onClick={() => revoke.mutate()}>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="ml-auto sm:ml-0"
+              loading={revoke.isPending}
+              onClick={() => revoke.mutate()}
+            >
               Revoke
             </Button>
           )}
-        </>
+        </div>
       )}
     </li>
   );
@@ -78,7 +110,7 @@ export function PeopleTab({ team }: { team: TeamDetail }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <Card className="p-5">
+      <Card className="p-4 sm:p-5">
         <h2 className="mb-4 text-sm font-semibold text-body">
           {team.members.length} {team.members.length === 1 ? "person" : "people"}
         </h2>
@@ -104,7 +136,7 @@ export function PeopleTab({ team }: { team: TeamDetail }) {
         </ul>
       </Card>
 
-      <Card className="p-5">
+      <Card className="p-4 sm:p-5">
         <div className="mb-1 flex items-baseline justify-between gap-3">
           <h2 className="text-sm font-semibold text-body">Invite links</h2>
           {isOwner && (
@@ -128,13 +160,19 @@ export function PeopleTab({ team }: { team: TeamDetail }) {
         {active.length > 0 && (
           <ul className="flex flex-col divide-y divide-line">
             {active.map((invite) => (
-              <InviteRow key={invite.id} invite={invite} teamId={team.id} canRevoke={isOwner} />
+              <InviteRow
+                key={invite.id}
+                invite={invite}
+                teamId={team.id}
+                teamName={team.name}
+                canRevoke={isOwner}
+              />
             ))}
           </ul>
         )}
       </Card>
 
-      <Card className="p-5">
+      <Card className="p-4 sm:p-5">
         <h2 className="mb-1 text-sm font-semibold text-body">Leave this team</h2>
         <p className="mb-4 text-[13px] text-muted">
           You can only leave once your balance is zero, so nobody inherits your share.

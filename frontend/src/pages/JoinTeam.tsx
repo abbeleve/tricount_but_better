@@ -32,7 +32,7 @@ export default function JoinTeam() {
         <PageTitle title="Join a team" />
 
         {preview.isPending && (
-          <Card className="flex flex-col gap-3 p-5">
+          <Card className="flex flex-col gap-3 p-4 sm:p-5">
             <Skeleton className="h-6 w-2/3" />
             <Skeleton className="h-4 w-1/3" />
             <Skeleton className="h-10 w-full" />
@@ -52,7 +52,7 @@ export default function JoinTeam() {
         )}
 
         {preview.data && (
-          <Card className="flex flex-col gap-4 p-5">
+          <Card className="flex flex-col gap-4 p-4 sm:p-5">
             <div>
               <p className="text-sm text-muted">You have been invited to</p>
               <p className="mt-1 text-xl font-semibold tracking-tight text-body">

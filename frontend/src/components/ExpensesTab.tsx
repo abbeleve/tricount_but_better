@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Card, Chip, EmptyState, Input, Money, Skeleton } from "./ui";
+import { Card, Chip, EmptyState, Input, Money, ROW_PRESS, Skeleton, cx } from "./ui";
 import { useCategories, useExpenses } from "../hooks/queries";
 import { useAuth } from "../hooks/useAuth";
 import type { Expense, TeamDetail } from "../lib/types";
@@ -45,6 +45,9 @@ export function ExpensesTab({ team }: { team: TeamDetail }) {
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Search expenses"
         aria-label="Search expenses"
+        enterKeyHint="search"
+        // Results filter as you type, so the return key only needs to put the keyboard away.
+        onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
       />
 
       {expenses.isPending && (
@@ -78,38 +81,42 @@ export function ExpensesTab({ team }: { team: TeamDetail }) {
         groupByDate(rows).map(([date, group]) => (
           <section key={date}>
             <h3 className="mb-2 px-1 text-[12px] font-medium text-subtle">{formatDate(date)}</h3>
-            <Card className="divide-y divide-line">
+            <Card className="divide-y divide-line overflow-hidden">
               {group.map((expense) => {
                 const myShare = expense.shares.find((s) => s.user_id === user?.id)?.amount ?? 0;
                 const iPaid = expense.payer_id === user?.id;
+                const emoji = emojiOf(expense.category_id);
                 return (
+                  /* Two independent lines rather than two columns: the title
+                     only competes with the total for width, not with the
+                     longer "your share" line, so it truncates far later on a phone. */
                   <Link
                     key={expense.id}
                     to={`/teams/${team.id}/expenses/${expense.id}`}
-                    className="flex items-center justify-between gap-4 p-4 transition-colors hover:bg-surface-2 active:translate-y-px"
+                    className={cx("block select-none px-4 py-3.5 hover:bg-surface-2", ROW_PRESS)}
                   >
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-body">
-                        {emojiOf(expense.category_id) && (
-                          <span className="mr-1.5">{emojiOf(expense.category_id)}</span>
-                        )}
+                    <div className="flex items-baseline justify-between gap-3">
+                      <p className="min-w-0 truncate font-medium text-body">
+                        {emoji && <span className="mr-1.5">{emoji}</span>}
                         {expense.title}
                       </p>
-                      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted">
-                        <span>{iPaid ? "You paid" : `${nameOf(expense.payer_id)} paid`}</span>
+                      <Money
+                        minor={expense.total}
+                        currency={expense.currency}
+                        className="shrink-0 font-medium"
+                      />
+                    </div>
+                    <div className="mt-1 flex items-center justify-between gap-3">
+                      <p className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted">
+                        <span className="truncate">
+                          {iPaid ? "You paid" : `${nameOf(expense.payer_id)} paid`}
+                        </span>
                         {expense.split_mode === "items" && (
                           <Chip>{expense.items.length} items</Chip>
                         )}
                         {expense.source === "receipt" && <Chip>scanned</Chip>}
                       </p>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <Money
-                        minor={expense.total}
-                        currency={expense.currency}
-                        className="font-medium"
-                      />
-                      <p className="mt-0.5 text-[12px] text-muted">
+                      <p className="shrink-0 text-right text-[12px] text-muted">
                         {myShare === 0 ? (
                           "you are not on this one"
                         ) : (

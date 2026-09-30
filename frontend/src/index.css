@@ -60,6 +60,16 @@
 
   --r-card: 16px;
   --r-control: 10px;
+
+  /* Header bar height, excluding the status-bar inset above it. Sticky bars
+     below the header offset themselves by this. */
+  --header-h: 3.5rem;
+}
+
+@media (min-width: 40rem) {
+  :root {
+    --header-h: 4rem;
+  }
 }
 
 .dark {
@@ -136,6 +146,8 @@
 
   html {
     -webkit-text-size-adjust: 100%;
+    /* The browser's grey tap flash fights the press states every control has. */
+    -webkit-tap-highlight-color: transparent;
   }
 
   body {
@@ -143,8 +155,30 @@
     color: var(--text);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
-    /* Safe areas: the phone layout puts a tab bar against the bottom edge. */
     min-height: 100dvh;
+  }
+
+  /* No double-tap-zoom wait on anything tappable, so taps land immediately. */
+  a,
+  button,
+  label,
+  select,
+  [role="button"],
+  [role="tab"] {
+    touch-action: manipulation;
+  }
+
+  /* A long press on a control must not select its label. Content stays selectable. */
+  button,
+  [role="button"],
+  [role="tab"] {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* iOS centres the value of a date input; every other field is left-aligned. */
+  input[type="date"]::-webkit-date-and-time-value {
+    text-align: left;
   }
 
   /* One focus treatment everywhere, visible on both themes. */
@@ -178,6 +212,50 @@
 }
 
 @layer components {
+  /*
+    Page gutters that step clear of the notch in landscape. `.bleed` undoes the
+    gutter so a sticky bar can run edge to edge and still line up its content.
+  */
+  .gutter {
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+  .bleed {
+    margin-left: calc(-1 * max(1rem, env(safe-area-inset-left)));
+    margin-right: calc(-1 * max(1rem, env(safe-area-inset-right)));
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+  @media (min-width: 40rem) {
+    .gutter {
+      padding-left: max(1.5rem, env(safe-area-inset-left));
+      padding-right: max(1.5rem, env(safe-area-inset-right));
+    }
+    .bleed {
+      margin-left: 0;
+      margin-right: 0;
+      padding-left: 0;
+      padding-right: 0;
+    }
+  }
+
+  /*
+    Translucent chrome: content scrolls underneath and stays faintly visible,
+    so a bar reads as a layer above the page rather than a strip cut out of it.
+  */
+  .material {
+    background-color: color-mix(in srgb, var(--bg) 82%, transparent);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .material {
+      background-color: var(--bg);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+  }
+
   /* Horizontal tab strips scroll on a phone but must not show a bar anywhere. */
   .no-scrollbar {
     scrollbar-width: none;

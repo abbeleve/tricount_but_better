@@ -1,16 +1,21 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
-export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  server: {
-    port: 5173,
-    // The API runs separately in development; this keeps the browser on one
-    // origin so there is no CORS or cookie ambiguity while developing.
-    proxy: {
-      "/api": { target: "http://127.0.0.1:8000", changeOrigin: true },
+export default defineConfig(({ mode }) => {
+  // API_URL points the dev proxy elsewhere when 8000 is taken by another project.
+  const env = loadEnv(mode, ".", "");
+
+  return {
+    plugins: [react(), tailwindcss()],
+    server: {
+      port: 5173,
+      // The API runs separately in development; this keeps the browser on one
+      // origin so there is no CORS or cookie ambiguity while developing.
+      proxy: {
+        "/api": { target: env.API_URL || "http://127.0.0.1:8000", changeOrigin: true },
+      },
     },
-  },
-  build: { outDir: "dist", sourcemap: false },
+    build: { outDir: "dist", sourcemap: false },
+  };
 });
