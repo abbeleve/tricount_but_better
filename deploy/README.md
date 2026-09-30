@@ -28,24 +28,43 @@ share a server with them under a separate domain or subdomain.
 
 ## 1. Bootstrap the server (once)
 
+From your laptop, copy the deployment files and run the bootstrap through the
+SSH account that already has sudo access on the server:
+
 ```bash
-sudo bash deploy/bootstrap.sh
+scp -r deploy deploy@194.87.111.40:/tmp/tricount-bootstrap
+ssh deploy@194.87.111.40 'sudo bash /tmp/tricount-bootstrap/bootstrap.sh'
 ```
 
-It installs nginx, Node, the Claude Code CLI, `uv`, creates the `tricount`
-service user and a `deploy` user, writes a `.env` with a freshly generated JWT
-secret, installs the systemd unit and nginx site, and adds a nightly backup.
+The script uses `/opt/tricount`, the existing `deploy` account, and a new
+`tricount` service user. It adds one nginx
+site without replacing your other sites; the app listens on local port `8010`.
 
-Then finish the three manual steps it prints: fill in `CLAUDE_CODE_OAUTH_TOKEN`,
-set your domain, and run `certbot --nginx -d your-domain`.
+For the first deployment, `tricount-194-87-111-40.sslip.io` resolves to
+`194.87.111.40`. Replace this temporary hostname with a domain you control
+when one is available. The existing application remains the default HTTP site
+for requests to the IP. On the server, run:
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d tricount-194-87-111-40.sslip.io
+```
+
+Open ports 80 and 443 in the server firewall. Keep port 8010 private.
+The script installs nginx, Certbot, Node, the Claude Code CLI, and `uv`,
+creates the users, generates a JWT secret, installs the systemd unit and nginx
+site, and adds a nightly backup. To deploy before configuring receipt scanning,
+set `VLM_PROVIDER=disabled` in `/opt/tricount/.env`. Otherwise supply
+`CLAUDE_CODE_OAUTH_TOKEN` and an egress route if required.
 
 ---
 
-## 2. Getting model traffic out of Russia
+## 2. Receipt-scanning egress (only if needed)
 
-`api.anthropic.com` is not reachable from a Russian IP, so the receipt parser
-needs an egress route. Pick **one**. All three are supported by the same code;
-they differ only in where the tunnel lives.
+If the server cannot reach `api.anthropic.com`, the receipt parser needs an
+egress route. Pick **one**. Otherwise leave both egress settings unset.
+All three routes are supported by the same code; they differ only in where
+the tunnel lives.
 
 ### (a) A SOCKS5 or HTTP proxy — simplest
 
@@ -143,10 +162,11 @@ synthetic receipt. If that prints line items, the whole path works.
 `alembic check` that fails if a model changed without a migration, plus
 typecheck, eslint and a production build of the frontend.
 
-`deploy.yml` runs on pushes to `main`. It calls `ci.yml` first and stops if
-anything fails, then rsyncs, backs up the database, migrates, restarts the
-service and polls `/api/health` until it answers — failing the run with the
-last 40 journal lines if it does not.
+`deploy.yml` runs on pushes to `main` or when started manually. It calls
+`ci.yml` first and stops if anything fails, then rsyncs, installs locked
+Python dependencies, invokes the root-owned release helper to back up and
+migrate the database, restarts the service, and polls `/api/health`. A failed
+health check prints the last 40 journal lines.
 
 ### Secrets to create
 
@@ -158,39 +178,49 @@ reviewer under **Settings → Environments → production** if you want a manual
 |---|---|
 | `SSH_HOST` | server hostname or IP |
 | `SSH_USER` | `deploy` |
-| `SSH_KEY` | the **private** half of the deploy key (full PEM, including header and footer lines) |
+| `SSH_KEY` | the **private** half of a dedicated deploy key, including its header and footer |
+| `SSH_KNOWN_HOSTS` | the verified SSH host key line for `194.87.111.40` |
 | `SSH_PORT` | optional, defaults to `22` |
-| `DEPLOY_PATH` | optional, defaults to `/opt/tricount` |
 
-Generate a key that exists only for deploys:
+Your existing personal SSH key is enough for the bootstrap. Generate a
+separate unencrypted key for GitHub Actions:
 
 ```bash
 ssh-keygen -t ed25519 -N '' -C 'github-actions' -f ~/.ssh/tricount_deploy
 
-# public half onto the server
-ssh-copy-id -i ~/.ssh/tricount_deploy.pub deploy@your-server
-
-# private half into GitHub (paste the whole file)
-cat ~/.ssh/tricount_deploy
-
+# The new deploy account has no password, so use your existing sudo-capable login.
+ssh deploy@194.87.111.40 'sudo install -d -o deploy -g deploy -m 700 /home/deploy/.ssh'
+cat ~/.ssh/tricount_deploy.pub | ssh deploy@194.87.111.40 \
+  'sudo tee -a /home/deploy/.ssh/authorized_keys >/dev/null &&
+   sudo chown deploy:deploy /home/deploy/.ssh/authorized_keys &&
+   sudo chmod 600 /home/deploy/.ssh/authorized_keys'
+ssh -i ~/.ssh/tricount_deploy deploy@194.87.111.40 'whoami'
 ```
 
-With `gh` installed you can skip the web UI:
+Pin the server host key. Compare the scanned fingerprint with the host's
+fingerprint through your already trusted admin SSH session; they must match:
 
 ```bash
-gh secret set SSH_KEY        < ~/.ssh/tricount_deploy
-gh secret set SSH_HOST       <<< "your-server"
-gh secret set SSH_USER       <<< "deploy"
+ssh-keyscan -t ed25519 194.87.111.40 > /tmp/tricount_known_hosts
+ssh-keygen -lf /tmp/tricount_known_hosts -E sha256
+ssh deploy@194.87.111.40 \
+  'sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub -E sha256'
 ```
 
-The workflow accepts the server host key automatically because GitHub runners
-are ephemeral. This keeps setup simple but does not protect the first SSH
-connection from a man-in-the-middle attack. Pin the host key in a secret if
-that protection is required.
+Put the complete contents of `~/.ssh/tricount_deploy` in `SSH_KEY`,
+`194.87.111.40` in `SSH_HOST`, `deploy` in `SSH_USER`, and the
+scanned line in `SSH_KNOWN_HOSTS`. Repository secrets work; storing them
+on the `production` environment also works. You may require a reviewer for
+that environment. Push to `main` to trigger the first deployment.
+When the Deploy workflow succeeds, check
+`curl -fsS https://tricount-194-87-111-40.sslip.io/api/health`; it should return
+`{"status":"ok"}`.
 
-The `CLAUDE_CODE_OAUTH_TOKEN` is deliberately **not** a GitHub secret. It lives
-only in `/opt/tricount/.env` on the server, so a compromised CI run cannot read
-it and deploys never rewrite it.
+The GitHub runner checks the server's host key on every connection. The
+private key stays in GitHub Actions secrets; never commit it.
+
+The `CLAUDE_CODE_OAUTH_TOKEN` is kept in `/opt/tricount/.env` on the server,
+and deploys never rewrite it.
 
 ---
 

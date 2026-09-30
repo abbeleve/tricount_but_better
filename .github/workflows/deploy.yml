@@ -32,21 +32,21 @@ jobs:
         env:
           SSH_KEY: ${{ secrets.SSH_KEY }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
 
-          # GitHub runners are ephemeral, so accept the server host key on
-          # every run instead of maintaining an SSH_KNOWN_HOSTS secret.
           cat > ~/.ssh/config <<SSH_CONFIG
           Host deploy-target
             HostName $SSH_HOST
             IdentityFile ~/.ssh/id_deploy
             IdentitiesOnly yes
-            StrictHostKeyChecking no
-            UserKnownHostsFile /dev/null
-            LogLevel ERROR
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
           SSH_CONFIG
           chmod 600 ~/.ssh/config
 
@@ -55,45 +55,30 @@ jobs:
           HOST: ${{ secrets.SSH_HOST }}
           USER: ${{ secrets.SSH_USER }}
           PORT: ${{ secrets.SSH_PORT || '22' }}
-          ROOT: ${{ secrets.DEPLOY_PATH || '/opt/tricount' }}
         run: |
           # --delete is safe here because data lives OUTSIDE app/ and web/:
           # the database, uploads and .env are siblings, never rsync targets.
           rsync -az --delete \
             -e "ssh -F $HOME/.ssh/config -p $PORT" \
             --exclude '.venv' --exclude '__pycache__' \
-            src migrations alembic.ini pyproject.toml uv.lock scripts \
-            "$USER@deploy-target:$ROOT/app/"
+            src migrations alembic.ini pyproject.toml uv.lock README.md scripts \
+            "$USER@deploy-target:/opt/tricount/app/"
 
           rsync -az --delete \
             -e "ssh -F $HOME/.ssh/config -p $PORT" \
-            frontend/dist/ "$USER@deploy-target:$ROOT/web/"
+            frontend/dist/ "$USER@deploy-target:/opt/tricount/web/"
 
       - name: Migrate and restart
         env:
           HOST: ${{ secrets.SSH_HOST }}
           USER: ${{ secrets.SSH_USER }}
           PORT: ${{ secrets.SSH_PORT || '22' }}
-          ROOT: ${{ secrets.DEPLOY_PATH || '/opt/tricount' }}
         run: |
           ssh -F ~/.ssh/config -p "$PORT" "$USER@deploy-target" bash -seu <<EOF
-            cd "$ROOT/app"
+            cd /opt/tricount/app
             export PATH="\$HOME/.local/bin:\$PATH"
-
-            # Back up the database before migrating, so a bad migration is
-            # recoverable. .backup is safe to run while the service is live.
-            if [ -f "$ROOT/var/tricount.db" ]; then
-              mkdir -p "$ROOT/backups"
-              sqlite3 "$ROOT/var/tricount.db" \
-                ".backup '$ROOT/backups/pre-deploy-\$(date +%Y%m%d-%H%M%S).db'"
-              ls -1t "$ROOT/backups"/pre-deploy-*.db | tail -n +11 | xargs -r rm --
-            fi
-
             uv sync --frozen --no-dev --extra socks
-            set -a; . "$ROOT/.env"; set +a
-            uv run alembic upgrade head
-
-            sudo systemctl restart tricount
+            sudo /usr/local/sbin/tricount-release
           EOF
 
       - name: Verify the service came back
