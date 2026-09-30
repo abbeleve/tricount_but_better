@@ -10,12 +10,14 @@ import {
 import { useAuth } from "../hooks/useAuth";
 import { todayLocal } from "../lib/dates";
 import { formatMoney } from "../lib/money";
+import { pluralRu, useI18n } from "../lib/i18n";
 import type { Settlement, TeamDetail } from "../lib/types";
 
 /** How long "Undo" stays offered after marking a payment made. */
 const UNDO_MS = 8000;
 
 export function BalancesTab({ team }: { team: TeamDetail }) {
+  const { t, language } = useI18n();
   const { user } = useAuth();
   const balances = useBalances(team.id);
   const totals = useCategoryTotals(team.id);
@@ -31,8 +33,8 @@ export function BalancesTab({ team }: { team: TeamDetail }) {
   }, [justSettled]);
 
   const nameOf = (id: string) =>
-    team.members.find((m) => m.user_id === id)?.display_name ?? "Someone";
-  const subjectOf = (id: string) => (id === user?.id ? "You" : nameOf(id));
+    team.members.find((m) => m.user_id === id)?.display_name ?? t("Someone");
+  const subjectOf = (id: string) => (id === user?.id ? t("You") : nameOf(id));
 
   if (balances.isPending) {
     return (
@@ -59,9 +61,9 @@ export function BalancesTab({ team }: { team: TeamDetail }) {
       <Card className="p-4 sm:p-5">
         {/* Stacks on a phone: side by side, both halves wrap to two lines. */}
         <div className="mb-5 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
-          <h2 className="text-sm font-semibold text-body">Where everyone stands</h2>
+          <h2 className="text-sm font-semibold text-body">{t("Where everyone stands")}</h2>
           <span className="text-[13px] text-muted">
-            {formatMoney(total_spend, currency)} spent in total
+            {t("{amount} spent in total", { amount: formatMoney(total_spend, currency) })}
           </span>
         </div>
         <BalanceMeter
@@ -72,11 +74,13 @@ export function BalancesTab({ team }: { team: TeamDetail }) {
       </Card>
 
       <Card className="p-4 sm:p-5">
-        <h2 className="mb-1 text-sm font-semibold text-body">Settle up</h2>
+        <h2 className="mb-1 text-sm font-semibold text-body">{t("Settle up")}</h2>
         <p className="mb-4 text-[13px] text-muted">
           {everyoneSettled
-            ? "Nothing outstanding."
-            : `${transfers.length} ${transfers.length === 1 ? "payment clears" : "payments clear"} every debt in this team.`}
+            ? t("Nothing outstanding.")
+            : language === "ru"
+              ? `Для погашения всех долгов ${transfers.length === 1 ? "нужен" : "нужно"} ${transfers.length} ${pluralRu(transfers.length, "перевод", "перевода", "переводов")}.`
+              : t(transfers.length === 1 ? "{count} payment clears every debt in this team." : "{count} payments clear every debt in this team.", { count: transfers.length })}
         </p>
 
         {justSettled && (
@@ -85,7 +89,7 @@ export function BalancesTab({ team }: { team: TeamDetail }) {
             className="mb-3 flex items-center justify-between gap-3 rounded-control bg-surface-2 py-1.5 pl-3 pr-1.5"
           >
             <p className="min-w-0 text-[13px] text-body">
-              {subjectOf(justSettled.from_user_id)} paid {nameOf(justSettled.to_user_id)}{" "}
+              {t("{from} paid {to}", { from: subjectOf(justSettled.from_user_id), to: nameOf(justSettled.to_user_id) })}{" "}
               <Money minor={justSettled.amount} currency={currency} className="text-[13px]" />
             </p>
             <Button
@@ -96,13 +100,13 @@ export function BalancesTab({ team }: { team: TeamDetail }) {
                 unsettle.mutate(justSettled.id, { onSuccess: () => setJustSettled(null) })
               }
             >
-              Undo
+              {t("Undo")}
             </Button>
           </div>
         )}
 
         {everyoneSettled ? (
-          <p className="py-2 text-sm text-muted">Everyone is square. Nice.</p>
+          <p className="py-2 text-sm text-muted">{t("Everyone is square. Nice.")}</p>
         ) : (
           <ul className="flex flex-col divide-y divide-line">
             {transfers.map((transfer) => {
@@ -113,7 +117,7 @@ export function BalancesTab({ team }: { team: TeamDetail }) {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm text-body">
                       <span className="font-medium">{subjectOf(transfer.from_user_id)}</span>
-                      <span className="text-muted"> {mine ? "pay" : "pays"} </span>
+                      <span className="text-muted"> {t(mine ? "pay" : "pays")} </span>
                       <span className="font-medium">{nameOf(transfer.to_user_id)}</span>
                     </p>
                     <Money
@@ -135,13 +139,13 @@ export function BalancesTab({ team }: { team: TeamDetail }) {
                           to_user_id: transfer.to_user_id,
                           amount: transfer.amount,
                           settled_at: todayLocal(),
-                          note: "Settled up",
+                          note: t("Settled up"),
                         },
                         { onSuccess: setJustSettled },
                       );
                     }}
                   >
-                    Mark paid
+                    {t("Mark paid")}
                   </Button>
                 </li>
               );
@@ -151,7 +155,7 @@ export function BalancesTab({ team }: { team: TeamDetail }) {
       </Card>
 
       <Card className="p-4 sm:p-5">
-        <h2 className="mb-4 text-sm font-semibold text-body">Spending by category</h2>
+        <h2 className="mb-4 text-sm font-semibold text-body">{t("Spending by category")}</h2>
         {totals.isPending && (
           <div className="flex flex-col gap-3">
             {[0, 1, 2].map((i) => (
@@ -163,7 +167,7 @@ export function BalancesTab({ team }: { team: TeamDetail }) {
           </div>
         )}
         {totals.data?.length === 0 && (
-          <EmptyState title="Nothing spent yet" body="Add an expense and the breakdown appears here." />
+          <EmptyState title={t("Nothing spent yet")} body={t("Add an expense and the breakdown appears here.")} />
         )}
         {totals.data && totals.data.length > 0 && (
           <CategoryBreakdown totals={totals.data} currency={currency} />

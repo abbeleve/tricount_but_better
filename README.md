@@ -14,15 +14,12 @@ Photograph the receipt, and Claude reads it into editable line items.
 - **Teams** — a flat, a trip, a household. Invite links, owners and members.
 - **Balances** — who is up, who is down, and the shortest set of payments that
   clears everything. Mark a payment as made and it settles.
-- **Three ways to add an expense**
-  1. a total split evenly,
-  2. a total split across chosen people, optionally with weights,
-  3. line by line — typed in, or read off a photographed receipt.
+- **Line-by-line expenses** — enter each item and its price, or read the lines from a photographed receipt. Choose who shares each line. Existing total-split expenses open as a single editable line.
 - **Receipt scanning** — one or more photos go to Claude, which returns
   structured line items. Everyone is on every line by default; tap a name off a
   line and they stop paying towards it.
 - **Categories** and a spending breakdown.
-- Works on a phone and on a desktop; light and dark.
+- Works on a phone and on a desktop; light and dark. English and Russian can be selected from the account menu (or on the sign-in screen). The home screen shows how much you owe across teams, separated by currency.
 
 ## How it is built
 

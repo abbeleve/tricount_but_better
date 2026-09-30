@@ -13,6 +13,7 @@
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
 import { useId } from "react";
 import { formatMoney } from "../lib/money";
+import { useI18n } from "../lib/i18n";
 
 export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
@@ -201,8 +202,9 @@ interface MoneyProps {
  * always rendered too, and a screen-reader label spells out the direction.
  */
 export function Money({ minor, currency, signed = false, className }: MoneyProps) {
+  const { t } = useI18n();
   const tone = !signed || minor === 0 ? "text-body" : minor > 0 ? "text-positive" : "text-negative";
-  const meaning = !signed || minor === 0 ? undefined : minor > 0 ? "owed to them" : "they owe";
+  const meaning = !signed || minor === 0 ? undefined : minor > 0 ? t("owed to them") : t("they owe");
 
   return (
     <span className={cx("tabular", tone, className)}>
@@ -272,13 +274,14 @@ export function EmptyState({
 }
 
 export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  const { t } = useI18n();
   return (
     <div className="flex flex-col items-center gap-3 px-6 py-14 text-center" role="alert">
-      <h3 className="text-base font-semibold text-body">That did not work</h3>
-      <p className="max-w-[46ch] text-sm leading-relaxed text-muted">{message}</p>
+      <h3 className="text-base font-semibold text-body">{t("That did not work")}</h3>
+      <p className="max-w-[46ch] text-sm leading-relaxed text-muted">{t(message)}</p>
       {onRetry && (
         <Button variant="secondary" size="sm" onClick={onRetry}>
-          Try again
+          {t("Try again")}
         </Button>
       )}
     </div>
@@ -287,13 +290,14 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
 
 /** Inline form-level error. Toasts are for transient news, not for failures. */
 export function FormError({ message }: { message: string | null }) {
+  const { t } = useI18n();
   if (!message) return null;
   return (
     <p
       role="alert"
       className="rounded-control border border-line bg-danger-soft px-3 py-2 text-[13px] text-danger"
     >
-      {message}
+      {t(message)}
     </p>
   );
 }

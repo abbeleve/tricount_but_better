@@ -1,3 +1,5 @@
+import { getLanguage } from "./i18n";
+
 /**
  * Money helpers. Mirrors the backend's `money.py` exactly.
  *
@@ -53,7 +55,7 @@ export function formatMoney(
 ): string {
   const exponent = exponentFor(currency);
   const value = minor / 10 ** exponent;
-  const formatted = new Intl.NumberFormat(undefined, {
+  const formatted = new Intl.NumberFormat(getLanguage() === "ru" ? "ru-RU" : "en-US", {
     style: "currency",
     currency,
     minimumFractionDigits: exponent,

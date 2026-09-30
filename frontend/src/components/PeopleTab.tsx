@@ -5,6 +5,7 @@ import { Avatar, Button, Card, Chip, FormError, Money, Skeleton } from "./ui";
 import { keys, useBalances, useInvites } from "../hooks/queries";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
+import { personWord, useI18n } from "../lib/i18n";
 import type { Invite, TeamDetail } from "../lib/types";
 
 /** Phones have a share sheet; sending the link straight to a chat beats copy-and-switch-apps. */
@@ -21,6 +22,7 @@ function InviteRow({
   teamName: string;
   canRevoke: boolean;
 }) {
+  const { t } = useI18n();
   const client = useQueryClient();
   const [copied, setCopied] = useState(false);
   const url = `${window.location.origin}/join/${invite.code}`;
@@ -37,13 +39,13 @@ function InviteRow({
       setTimeout(() => setCopied(false), 2000);
     } catch {
       // Clipboard is blocked on insecure origins; select the text instead.
-      window.prompt("Copy this invite link", url);
+      window.prompt(t("Copy this invite link"), url);
     }
   }
 
   async function share() {
     try {
-      await navigator.share({ title: `Join ${teamName}`, text: `Join ${teamName} to split costs`, url });
+      await navigator.share({ title: t("Join {name}", { name: teamName }), text: t("Join {name} to split costs", { name: teamName }), url });
     } catch {
       /* dismissing the share sheet rejects; that is not an error worth showing */
     }
@@ -55,16 +57,16 @@ function InviteRow({
         {url}
       </code>
       {invite.revoked ? (
-        <Chip>expired</Chip>
+        <Chip>{t("expired")}</Chip>
       ) : (
         <div className="flex items-center gap-2">
           {canShare && (
             <Button size="sm" onClick={share}>
-              Share
+              {t("Share")}
             </Button>
           )}
           <Button size="sm" variant="secondary" onClick={copy}>
-            {copied ? "Copied" : "Copy"}
+            {t(copied ? "Copied" : "Copy")}
           </Button>
           {canRevoke && (
             <Button
@@ -74,7 +76,7 @@ function InviteRow({
               loading={revoke.isPending}
               onClick={() => revoke.mutate()}
             >
-              Revoke
+              {t("Revoke")}
             </Button>
           )}
         </div>
@@ -84,6 +86,7 @@ function InviteRow({
 }
 
 export function PeopleTab({ team }: { team: TeamDetail }) {
+  const { t, language } = useI18n();
   const { user } = useAuth();
   const client = useQueryClient();
   const navigate = useNavigate();
@@ -112,7 +115,7 @@ export function PeopleTab({ team }: { team: TeamDetail }) {
     <div className="flex flex-col gap-4">
       <Card className="p-4 sm:p-5">
         <h2 className="mb-4 text-sm font-semibold text-body">
-          {team.members.length} {team.members.length === 1 ? "person" : "people"}
+          {team.members.length} {personWord(team.members.length, language)}
         </h2>
         <ul className="flex flex-col divide-y divide-line">
           {team.members.map((member) => (
@@ -122,9 +125,9 @@ export function PeopleTab({ team }: { team: TeamDetail }) {
                 <p className="flex items-center gap-2 truncate text-sm font-medium text-body">
                   {member.display_name}
                   {member.user_id === user?.id && (
-                    <span className="text-[12px] font-normal text-subtle">you</span>
+                    <span className="text-[12px] font-normal text-subtle">{t("you")}</span>
                   )}
-                  {member.role === "owner" && <Chip>owner</Chip>}
+                  {member.role === "owner" && <Chip>{t("owner")}</Chip>}
                 </p>
                 <p className="truncate text-[12px] text-muted">{member.email}</p>
               </div>
@@ -138,10 +141,10 @@ export function PeopleTab({ team }: { team: TeamDetail }) {
 
       <Card className="p-4 sm:p-5">
         <div className="mb-1 flex items-baseline justify-between gap-3">
-          <h2 className="text-sm font-semibold text-body">Invite links</h2>
+          <h2 className="text-sm font-semibold text-body">{t("Invite links")}</h2>
           {isOwner && (
             <Button size="sm" variant="secondary" loading={createInvite.isPending} onClick={() => createInvite.mutate()}>
-              New link
+              {t("New link")}
             </Button>
           )}
         </div>
@@ -154,7 +157,7 @@ export function PeopleTab({ team }: { team: TeamDetail }) {
         {invites.isPending && <Skeleton className="h-9 w-full" />}
         {invites.data && active.length === 0 && (
           <p className="text-sm text-muted">
-            {isOwner ? "No active links. Create one to add someone." : "No active links right now."}
+            {t(isOwner ? "No active links. Create one to add someone." : "No active links right now.")}
           </p>
         )}
         {active.length > 0 && (
@@ -173,9 +176,9 @@ export function PeopleTab({ team }: { team: TeamDetail }) {
       </Card>
 
       <Card className="p-4 sm:p-5">
-        <h2 className="mb-1 text-sm font-semibold text-body">Leave this team</h2>
+        <h2 className="mb-1 text-sm font-semibold text-body">{t("Leave this team")}</h2>
         <p className="mb-4 text-[13px] text-muted">
-          You can only leave once your balance is zero, so nobody inherits your share.
+          {t("You can only leave once your balance is zero, so nobody inherits your share.")}
         </p>
         <FormError message={leave.error instanceof ApiError ? leave.error.message : null} />
         <Button
@@ -184,7 +187,7 @@ export function PeopleTab({ team }: { team: TeamDetail }) {
           onClick={() => leave.mutate()}
           disabled={netOf(user?.id ?? "") !== 0}
         >
-          Leave {team.name}
+          {t("Leave {name}", { name: team.name })}
         </Button>
       </Card>
     </div>

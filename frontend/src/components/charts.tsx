@@ -9,6 +9,7 @@
 import { Money, cx } from "./ui";
 import type { Balance, CategoryTotal } from "../lib/types";
 import { formatMoney } from "../lib/money";
+import { useI18n } from "../lib/i18n";
 
 /* ---------------------------------------------------------- balance meter */
 
@@ -28,6 +29,7 @@ export function BalanceMeter({
   currency: string;
   currentUserId: string;
 }) {
+  const { t } = useI18n();
   const scale = Math.max(1, ...balances.map((b) => Math.abs(b.net)));
   const ordered = [...balances].sort((a, b) => b.net - a.net);
 
@@ -35,9 +37,9 @@ export function BalanceMeter({
     <div>
       {/* The axis legend: says what each side of the centre line means. */}
       <div className="mb-3 flex items-center justify-between text-[11px] text-subtle">
-        <span>owes</span>
-        <span>settled</span>
-        <span>is owed</span>
+        <span>{t("owes")}</span>
+        <span>{t("settled")}</span>
+        <span>{t("is owed")}</span>
       </div>
 
       <ul className="flex flex-col gap-3.5">
@@ -51,7 +53,7 @@ export function BalanceMeter({
               <div className="mb-1.5 flex items-baseline justify-between gap-3">
                 <span className="truncate text-sm text-body">
                   {balance.display_name}
-                  {isMe && <span className="ml-1.5 text-[12px] text-subtle">you</span>}
+                  {isMe && <span className="ml-1.5 text-[12px] text-subtle">{t("you")}</span>}
                 </span>
                 <Money minor={balance.net} currency={currency} signed className="text-sm" />
               </div>
@@ -94,6 +96,7 @@ export function CategoryBreakdown({
   totals: CategoryTotal[];
   currency: string;
 }) {
+  const { t } = useI18n();
   const grand = totals.reduce((sum, t) => sum + t.total, 0);
   const scale = Math.max(1, ...totals.map((t) => t.total));
 
@@ -105,7 +108,7 @@ export function CategoryBreakdown({
           <li
             key={entry.category_id ?? "none"}
             className="group"
-            title={`${entry.name}: ${formatMoney(entry.total, currency)} — ${share}% of all spending`}
+            title={`${entry.name}: ${formatMoney(entry.total, currency)} — ${t("{share}% of all spending", { share })}`}
           >
             <div className="mb-1.5 flex items-baseline justify-between gap-3">
               <span className="truncate text-sm text-body">

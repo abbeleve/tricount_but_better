@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Navigate, Route, BrowserRouter as Router, Routes, useLocation } from "react-router-dom";
+import { LanguageProvider, useI18n } from "./lib/i18n";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
 import ExpenseForm from "./pages/ExpenseForm";
 import JoinTeam from "./pages/JoinTeam";
@@ -22,12 +23,13 @@ const queryClient = new QueryClient({
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, ready } = useAuth();
+  const { t } = useI18n();
   const location = useLocation();
 
   if (!ready) {
     return (
       <div className="grid min-h-dvh place-items-center bg-bg">
-        <span className="sr-only">Loading</span>
+        <span className="sr-only">{t("Loading")}</span>
       </div>
     );
   }
@@ -46,24 +48,26 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <Router>
-        <AuthProvider>
-          <Routes>
-            <Route path="/login" element={<RedirectIfSignedIn><Login /></RedirectIfSignedIn>} />
-            <Route path="/register" element={<RedirectIfSignedIn><Register /></RedirectIfSignedIn>} />
-            <Route path="/" element={<RequireAuth><Teams /></RequireAuth>} />
-            <Route path="/teams/:teamId" element={<RequireAuth><TeamDetail /></RequireAuth>} />
-            <Route
-              path="/teams/:teamId/expenses/new"
-              element={<RequireAuth><ExpenseForm /></RequireAuth>}
-            />
-            <Route
-              path="/teams/:teamId/expenses/:expenseId"
-              element={<RequireAuth><ExpenseForm /></RequireAuth>}
-            />
-            <Route path="/join/:code" element={<RequireAuth><JoinTeam /></RequireAuth>} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </AuthProvider>
+        <LanguageProvider>
+          <AuthProvider>
+            <Routes>
+              <Route path="/login" element={<RedirectIfSignedIn><Login /></RedirectIfSignedIn>} />
+              <Route path="/register" element={<RedirectIfSignedIn><Register /></RedirectIfSignedIn>} />
+              <Route path="/" element={<RequireAuth><Teams /></RequireAuth>} />
+              <Route path="/teams/:teamId" element={<RequireAuth><TeamDetail /></RequireAuth>} />
+              <Route
+                path="/teams/:teamId/expenses/new"
+                element={<RequireAuth><ExpenseForm /></RequireAuth>}
+              />
+              <Route
+                path="/teams/:teamId/expenses/:expenseId"
+                element={<RequireAuth><ExpenseForm /></RequireAuth>}
+              />
+              <Route path="/join/:code" element={<RequireAuth><JoinTeam /></RequireAuth>} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </AuthProvider>
+        </LanguageProvider>
       </Router>
     </QueryClientProvider>
   );

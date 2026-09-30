@@ -3,10 +3,11 @@ import { Link } from "react-router-dom";
 import { Card, Chip, EmptyState, Input, Money, ROW_PRESS, Skeleton, cx } from "./ui";
 import { useCategories, useExpenses } from "../hooks/queries";
 import { useAuth } from "../hooks/useAuth";
+import { useI18n } from "../lib/i18n";
 import type { Expense, TeamDetail } from "../lib/types";
 
-function formatDate(iso: string): string {
-  return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, {
+function formatDate(iso: string, language: string): string {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString(language === "ru" ? "ru-RU" : "en-US", {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -25,13 +26,14 @@ function groupByDate(expenses: Expense[]): [string, Expense[]][] {
 }
 
 export function ExpensesTab({ team }: { team: TeamDetail }) {
+  const { t, language } = useI18n();
   const { user } = useAuth();
   const [search, setSearch] = useState("");
   const expenses = useExpenses(team.id, search);
   const categories = useCategories(team.id);
 
   const nameOf = (id: string) =>
-    team.members.find((m) => m.user_id === id)?.display_name ?? "Someone";
+    team.members.find((m) => m.user_id === id)?.display_name ?? t("Someone");
   const emojiOf = (id: string | null) =>
     id ? (categories.data?.find((c) => c.id === id)?.emoji ?? "") : "";
 
@@ -43,8 +45,8 @@ export function ExpensesTab({ team }: { team: TeamDetail }) {
         type="search"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search expenses"
-        aria-label="Search expenses"
+        placeholder={t("Search expenses")}
+        aria-label={t("Search expenses")}
         enterKeyHint="search"
         // Results filter as you type, so the return key only needs to put the keyboard away.
         onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
@@ -67,11 +69,11 @@ export function ExpensesTab({ team }: { team: TeamDetail }) {
       {expenses.data && rows.length === 0 && (
         <Card>
           <EmptyState
-            title={search ? "Nothing matched" : "No expenses yet"}
+            title={t(search ? "Nothing matched" : "No expenses yet")}
             body={
               search
-                ? "Try a different word, or clear the search."
-                : "Add the first one. You can type a total and split it, or photograph a receipt and split it line by line."
+                ? t("Try a different word, or clear the search.")
+                : t("Add the first one. Type the lines or photograph a receipt.")
             }
           />
         </Card>
@@ -80,7 +82,7 @@ export function ExpensesTab({ team }: { team: TeamDetail }) {
       {rows.length > 0 &&
         groupByDate(rows).map(([date, group]) => (
           <section key={date}>
-            <h3 className="mb-2 px-1 text-[12px] font-medium text-subtle">{formatDate(date)}</h3>
+            <h3 className="mb-2 px-1 text-[12px] font-medium text-subtle">{formatDate(date, language)}</h3>
             <Card className="divide-y divide-line overflow-hidden">
               {group.map((expense) => {
                 const myShare = expense.shares.find((s) => s.user_id === user?.id)?.amount ?? 0;
@@ -109,19 +111,19 @@ export function ExpensesTab({ team }: { team: TeamDetail }) {
                     <div className="mt-1 flex items-center justify-between gap-3">
                       <p className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted">
                         <span className="truncate">
-                          {iPaid ? "You paid" : `${nameOf(expense.payer_id)} paid`}
+                          {iPaid ? t("You paid") : t("{name} paid", { name: nameOf(expense.payer_id) })}
                         </span>
                         {expense.split_mode === "items" && (
-                          <Chip>{expense.items.length} items</Chip>
+                          <Chip>{t("{count} items", { count: expense.items.length })}</Chip>
                         )}
-                        {expense.source === "receipt" && <Chip>scanned</Chip>}
+                        {expense.source === "receipt" && <Chip>{t("scanned")}</Chip>}
                       </p>
                       <p className="shrink-0 text-right text-[12px] text-muted">
                         {myShare === 0 ? (
-                          "you are not on this one"
+                          t("you are not on this one")
                         ) : (
                           <>
-                            your share{" "}
+                            {t("your share")}{" "}
                             <Money minor={myShare} currency={expense.currency} className="text-[12px]" />
                           </>
                         )}

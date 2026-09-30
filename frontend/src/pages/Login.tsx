@@ -4,8 +4,10 @@ import { AuthShell } from "../components/Layout";
 import { Button, Card, Field, FormError, Input } from "../components/ui";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError } from "../lib/api";
+import { useI18n } from "../lib/i18n";
 
 export default function Login() {
+  const { t } = useI18n();
   const { login } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -29,13 +31,13 @@ export default function Login() {
 
   return (
     <AuthShell>
-      <h1 className="mb-1 text-2xl font-semibold tracking-tight text-body">Welcome back</h1>
-      <p className="mb-6 text-sm text-muted">Sign in to see what your flat owes you.</p>
+      <h1 className="mb-1 text-2xl font-semibold tracking-tight text-body">{t("Welcome back")}</h1>
+      <p className="mb-6 text-sm text-muted">{t("Sign in to see what your flat owes you.")}</p>
 
       <Card className="p-4 sm:p-5">
         <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
           <FormError message={error} />
-          <Field label="Email">
+          <Field label={t("Email")}>
             {(id) => (
               <Input
                 id={id}
@@ -52,7 +54,7 @@ export default function Login() {
               />
             )}
           </Field>
-          <Field label="Password">
+          <Field label={t("Password")}>
             {(id) => (
               <Input
                 id={id}
@@ -66,15 +68,15 @@ export default function Login() {
             )}
           </Field>
           <Button type="submit" loading={busy} full>
-            Sign in
+            {t("Sign in")}
           </Button>
         </form>
       </Card>
 
       <p className="mt-5 text-center text-sm text-muted">
-        No account yet?{" "}
+        {t("No account yet?")}{" "}
         <Link to="/register" className="font-medium text-body underline underline-offset-4">
-          Create one
+          {t("Create one")}
         </Link>
       </p>
     </AuthShell>

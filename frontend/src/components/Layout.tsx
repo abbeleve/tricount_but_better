@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+import { useI18n } from "../lib/i18n";
 import { Avatar, Button, cx } from "./ui";
 
 /** Matches --bg, so the phone's status bar and browser chrome blend into the header. */
@@ -38,10 +39,11 @@ function ThemeIcon({ dark }: { dark: boolean }) {
 }
 
 function ThemeToggle({ theme: [dark, toggle], className }: { theme: Theme; className?: string }) {
+  const { t } = useI18n();
   return (
     <button
       onClick={toggle}
-      aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
+      aria-label={t(dark ? "Switch to light theme" : "Switch to dark theme")}
       className={cx(
         "size-9 place-items-center rounded-control text-muted",
         "transition-colors hover:bg-surface-2 hover:text-body active:bg-surface-2",
@@ -63,6 +65,7 @@ function AccountMenu({ theme }: { theme: Theme }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [dark, toggleTheme] = theme;
+  const { language, setLanguage, t } = useI18n();
 
   useEffect(() => {
     if (!open) return;
@@ -85,7 +88,7 @@ function AccountMenu({ theme }: { theme: Theme }) {
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="Account"
+        aria-label={t("Account")}
         className="-mr-1 flex items-center gap-2 rounded-control p-1 transition-colors hover:bg-surface-2 active:bg-surface-2 active:duration-0 pointer-coarse:p-2"
       >
         <Avatar name={user.display_name} size={28} />
@@ -119,8 +122,24 @@ function AccountMenu({ theme }: { theme: Theme }) {
             <span className="text-muted">
               <ThemeIcon dark={dark} />
             </span>
-            {dark ? "Light theme" : "Dark theme"}
+            {t(dark ? "Light theme" : "Dark theme")}
           </button>
+          <div className="border-t border-line px-3 py-2.5">
+            <p className="mb-2 text-[12px] text-muted">{t("Language")}</p>
+            <div className="flex gap-2" role="group" aria-label={t("Language")}>
+              {(["en", "ru"] as const).map((code) => (
+                <button
+                  key={code}
+                  type="button"
+                  aria-pressed={language === code}
+                  onClick={() => setLanguage(code)}
+                  className={cx("rounded-control border px-2.5 py-1.5 text-[13px]", language === code ? "border-ink bg-ink text-ink-text" : "border-line text-body hover:bg-surface-2")}
+                >
+                  {code === "en" ? "English" : "Русский"}
+                </button>
+              ))}
+            </div>
+          </div>
           <button
             role="menuitem"
             onClick={() => {
@@ -129,7 +148,7 @@ function AccountMenu({ theme }: { theme: Theme }) {
             }}
             className={MENU_ITEM}
           >
-            Sign out
+            {t("Sign out")}
           </button>
         </div>
       )}
@@ -234,9 +253,19 @@ export function AppShell({
 
 /** Centred column for signed-out screens. */
 export function AuthShell({ children }: { children: React.ReactNode }) {
+  const { language, setLanguage, t } = useI18n();
   return (
     <div className="gutter grid min-h-dvh place-items-center bg-bg pb-[max(2.5rem,env(safe-area-inset-bottom))] pt-[max(2.5rem,env(safe-area-inset-top))]">
-      <div className="w-full max-w-sm">{children}</div>
+      <div className="w-full max-w-sm">
+        {children}
+        <div className="mt-5 flex justify-center gap-3 text-[13px] text-muted" role="group" aria-label={t("Language")}>
+          {(["en", "ru"] as const).map((code) => (
+            <button key={code} type="button" aria-pressed={language === code} onClick={() => setLanguage(code)} className={cx("rounded-control px-1 py-1 hover:text-body", language === code && "font-medium text-body")}>
+              {code === "en" ? "English" : "Русский"}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

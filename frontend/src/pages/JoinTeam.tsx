@@ -4,10 +4,12 @@ import { AppShell, PageTitle } from "../components/Layout";
 import { Button, Card, ErrorState, FormError, Skeleton } from "../components/ui";
 import { keys } from "../hooks/queries";
 import { ApiError, api } from "../lib/api";
+import { personWord, useI18n } from "../lib/i18n";
 import type { InvitePreview, TeamDetail } from "../lib/types";
 import { useQueryClient } from "@tanstack/react-query";
 
 export default function JoinTeam() {
+  const { t, language } = useI18n();
   const { code = "" } = useParams();
   const navigate = useNavigate();
   const client = useQueryClient();
@@ -29,7 +31,7 @@ export default function JoinTeam() {
   return (
     <AppShell>
       <div className="mx-auto max-w-md">
-        <PageTitle title="Join a team" />
+        <PageTitle title={t("Join a team")} />
 
         {preview.isPending && (
           <Card className="flex flex-col gap-3 p-4 sm:p-5">
@@ -45,7 +47,7 @@ export default function JoinTeam() {
               message={
                 preview.error instanceof ApiError
                   ? preview.error.message
-                  : "This invite link could not be checked."
+                  : t("This invite link could not be checked.")
               }
             />
           </Card>
@@ -54,13 +56,13 @@ export default function JoinTeam() {
         {preview.data && (
           <Card className="flex flex-col gap-4 p-4 sm:p-5">
             <div>
-              <p className="text-sm text-muted">You have been invited to</p>
+              <p className="text-sm text-muted">{t("You have been invited to")}</p>
               <p className="mt-1 text-xl font-semibold tracking-tight text-body">
                 {preview.data.team_name}
               </p>
               <p className="mt-1 text-sm text-muted">
                 {preview.data.member_count}{" "}
-                {preview.data.member_count === 1 ? "person" : "people"} · settles in{" "}
+                {personWord(preview.data.member_count, language)} · {t("settles in")}{" "}
                 {preview.data.currency}
               </p>
             </div>
@@ -68,7 +70,7 @@ export default function JoinTeam() {
               message={join.error instanceof ApiError ? join.error.message : null}
             />
             <Button onClick={() => join.mutate()} loading={join.isPending} full>
-              Join team
+              {t("Join team")}
             </Button>
           </Card>
         )}

@@ -4,10 +4,12 @@ import { AuthShell } from "../components/Layout";
 import { Button, Card, Field, FormError, Input } from "../components/ui";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError } from "../lib/api";
+import { useI18n } from "../lib/i18n";
 
 const MIN_PASSWORD = 10;
 
 export default function Register() {
+  const { t } = useI18n();
   const { register } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -35,13 +37,13 @@ export default function Register() {
 
   return (
     <AuthShell>
-      <h1 className="mb-1 text-2xl font-semibold tracking-tight text-body">Create an account</h1>
-      <p className="mb-6 text-sm text-muted">Then invite the people you live with.</p>
+      <h1 className="mb-1 text-2xl font-semibold tracking-tight text-body">{t("Create an account")}</h1>
+      <p className="mb-6 text-sm text-muted">{t("Then invite the people you live with.")}</p>
 
       <Card className="p-4 sm:p-5">
         <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
           <FormError message={error} />
-          <Field label="Your name" hint="This is how your flatmates will see you.">
+          <Field label={t("Your name")} hint={t("This is how your flatmates will see you.")}>
             {(id) => (
               <Input
                 id={id}
@@ -55,7 +57,7 @@ export default function Register() {
               />
             )}
           </Field>
-          <Field label="Email">
+          <Field label={t("Email")}>
             {(id) => (
               <Input
                 id={id}
@@ -73,9 +75,9 @@ export default function Register() {
             )}
           </Field>
           <Field
-            label="Password"
-            hint={`At least ${MIN_PASSWORD} characters.`}
-            error={tooShort ? `Use at least ${MIN_PASSWORD} characters.` : undefined}
+            label={t("Password")}
+            hint={t("At least {count} characters.", { count: MIN_PASSWORD })}
+            error={tooShort ? t("Use at least {count} characters.", { count: MIN_PASSWORD }) : undefined}
           >
             {(id) => (
               <Input
@@ -91,15 +93,15 @@ export default function Register() {
             )}
           </Field>
           <Button type="submit" loading={busy} disabled={tooShort} full>
-            Create account
+            {t("Create account")}
           </Button>
         </form>
       </Card>
 
       <p className="mt-5 text-center text-sm text-muted">
-        Already have one?{" "}
+        {t("Already have one?")}{" "}
         <Link to="/login" className="font-medium text-body underline underline-offset-4">
-          Sign in
+          {t("Sign in")}
         </Link>
       </p>
     </AuthShell>

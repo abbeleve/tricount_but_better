@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button, Card, FormError, Skeleton, cx } from "./ui";
 import { useReceipt, useServerConfig } from "../hooks/queries";
 import { ApiError, api } from "../lib/api";
+import { useI18n } from "../lib/i18n";
 import type { ParsedReceiptItem, Receipt } from "../lib/types";
 
 interface Props {
@@ -32,6 +33,7 @@ const TILE = cx(
  * and a look at the thumbnails catches a blurred photo before the slow part.
  */
 export function ReceiptScanner({ teamId, onParsed, onCancel }: Props) {
+  const { t } = useI18n();
   const config = useServerConfig();
   const cameraRef = useRef<HTMLInputElement>(null);
   const pickerRef = useRef<HTMLInputElement>(null);
@@ -97,14 +99,13 @@ export function ReceiptScanner({ teamId, onParsed, onCancel }: Props) {
   return (
     <Card className="p-4 sm:p-5">
       <div className="mb-1 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-body">Scan a receipt</h2>
+        <h2 className="text-sm font-semibold text-body">{t("Scan a receipt")}</h2>
         <Button size="sm" variant="ghost" className="-mr-2" onClick={onCancel}>
-          Cancel
+          {t("Cancel")}
         </Button>
       </div>
       <p className="mb-4 text-[13px] text-muted">
-        Photograph the whole receipt. A long one can take several photos — add them in order.
-        Every line comes back editable, so you can fix anything the model misread.
+        {t("Photograph the whole receipt. A long one can take several photos — add them in order. Every line comes back editable, so you can fix anything the model misread.")}
       </p>
 
       <FormError
@@ -112,7 +113,7 @@ export function ReceiptScanner({ teamId, onParsed, onCancel }: Props) {
           upload.error instanceof ApiError
             ? upload.error.message
             : failed
-              ? (receipt.data?.error ?? "That receipt could not be read.")
+              ? (receipt.data?.error ?? t("That receipt could not be read."))
               : null
         }
       />
@@ -151,13 +152,13 @@ export function ReceiptScanner({ teamId, onParsed, onCancel }: Props) {
             <li key={shot.url} className="relative shrink-0 snap-start">
               <img
                 src={shot.url}
-                alt={`Photo ${i + 1}`}
+                alt={t("Photo {count}", { count: i + 1 })}
                 className="h-28 w-20 rounded-control border border-line object-cover"
               />
               {!working && (
                 <button
                   type="button"
-                  aria-label={`Remove photo ${i + 1}`}
+                  aria-label={t("Remove photo {count}", { count: i + 1 })}
                   onClick={() => remove(shot.url)}
                   className={cx(
                     "absolute right-1 top-1 grid size-7 place-items-center rounded-full",
@@ -185,7 +186,7 @@ export function ReceiptScanner({ teamId, onParsed, onCancel }: Props) {
                 <svg viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                   <path d="M8 3v10M3 8h10" />
                 </svg>
-                <span className="text-[12px]">Add</span>
+                <span className="text-[12px]">{t("Add")}</span>
               </button>
             </li>
           )}
@@ -195,7 +196,7 @@ export function ReceiptScanner({ teamId, onParsed, onCancel }: Props) {
       {working ? (
         <div className="flex flex-col gap-3" aria-live="polite">
           <p className="text-sm text-muted">
-            {STATUS_COPY[receipt.data?.status ?? "pending"] ?? "Uploading…"}
+            {t(STATUS_COPY[receipt.data?.status ?? "pending"] ?? "Uploading…")}
           </p>
           {/* The skeleton is shaped like the line list it will become. */}
           {[0, 1, 2, 3].map((i) => (
@@ -207,7 +208,7 @@ export function ReceiptScanner({ teamId, onParsed, onCancel }: Props) {
         </div>
       ) : shots.length > 0 ? (
         <Button type="button" full onClick={() => upload.mutate(shots.map((s) => s.file))}>
-          {failed ? "Try again" : "Read the receipt"}
+          {t(failed ? "Try again" : "Read the receipt")}
         </Button>
       ) : (
         <>
@@ -221,7 +222,7 @@ export function ReceiptScanner({ teamId, onParsed, onCancel }: Props) {
                 <path d="M2.5 7.5A1.5 1.5 0 0 1 4 6h1.8l1.2-2h6l1.2 2H16a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 16 16H4a1.5 1.5 0 0 1-1.5-1.5v-7Z" />
                 <circle cx="10" cy="10.75" r="2.75" />
               </svg>
-              <span className="text-sm font-medium">Take a photo</span>
+              <span className="text-sm font-medium">{t("Take a photo")}</span>
             </button>
             <button
               type="button"
@@ -237,13 +238,13 @@ export function ReceiptScanner({ teamId, onParsed, onCancel }: Props) {
                 <path d="m20.5 16-4.5-4.5-8 8" />
               </svg>
               <span className="text-sm font-medium">
-                <span className="pointer-coarse:hidden">Choose images</span>
-                <span className="hidden pointer-coarse:inline">From photos</span>
+                <span className="pointer-coarse:hidden">{t("Choose images")}</span>
+                <span className="hidden pointer-coarse:inline">{t("From photos")}</span>
               </span>
             </button>
           </div>
           <p className="mt-2 text-center text-[12px] text-muted">
-            Up to {max} images, {config.data?.max_upload_mb ?? 12} MB each
+            {t("Up to {count} images, {size} MB each", { count: max, size: config.data?.max_upload_mb ?? 12 })}
           </p>
         </>
       )}

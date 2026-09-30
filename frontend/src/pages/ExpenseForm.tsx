@@ -28,15 +28,15 @@ import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import { todayLocal } from "../lib/dates";
 import { previewEqualSplit, toMajorString, toMinor } from "../lib/money";
+import { useI18n } from "../lib/i18n";
 import type { Expense, Member, ParsedReceiptItem, Receipt } from "../lib/types";
-
-type Mode = "total" | "items";
 
 interface ItemDraft {
   key: string;
   name: string;
   amount: string;
   userIds: string[];
+  weights?: Record<string, string>;
 }
 
 let counter = 0;
@@ -95,6 +95,7 @@ export default function ExpenseForm() {
   const { teamId = "", expenseId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { t } = useI18n();
   const team = useTeam(teamId);
   const categories = useCategories(teamId);
   const config = useServerConfig();
@@ -107,19 +108,14 @@ export default function ExpenseForm() {
   const currency = team.data?.currency ?? "RUB";
 
   const [loaded, setLoaded] = useState(false);
-  const [mode, setMode] = useState<Mode>("total");
   const [scanning, setScanning] = useState(false);
   const [receiptId, setReceiptId] = useState<string | null>(null);
 
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
-  const [amount, setAmount] = useState("");
   const [payerId, setPayerId] = useState("");
   const [spentAt, setSpentAt] = useState(todayLocal());
   const [categoryId, setCategoryId] = useState("");
-  const [participants, setParticipants] = useState<string[]>([]);
-  const [weights, setWeights] = useState<Record<string, string>>({});
-  const [customWeights, setCustomWeights] = useState(false);
   const [items, setItems] = useState<ItemDraft[]>([]);
   /** The line just added by hand, so its name field can take focus. */
   const [focusKey, setFocusKey] = useState<string | null>(null);
@@ -137,7 +133,6 @@ export default function ExpenseForm() {
   if (!editing && !loaded && team.data && user) {
     setLoaded(true);
     setPayerId(user.id);
-    setParticipants(members.map((m) => m.user_id));
   }
 
   /* Populate from an existing expense exactly once. */
@@ -150,40 +145,23 @@ export default function ExpenseForm() {
     setSpentAt(e.spent_at);
     setCategoryId(e.category_id ?? "");
     setReceiptId(e.receipt_id);
-    setMode(e.split_mode);
-    if (e.split_mode === "total") {
-      setAmount(toMajorString(e.total, e.currency));
-      setParticipants(e.shares.map((s) => s.user_id));
-      const nextWeights: Record<string, string> = {};
-      let mixed = false;
-      for (const share of e.shares) {
-        nextWeights[share.user_id] = share.weight ?? "1";
-        if (share.weight && share.weight !== e.shares[0].weight) mixed = true;
-      }
-      setWeights(nextWeights);
-      setCustomWeights(mixed);
-    } else {
-      setItems(
-        e.items.map((item) => ({
+    setItems(e.split_mode === "total"
+      ? [{
+          key: nextKey(),
+          name: e.title,
+          amount: toMajorString(e.total, e.currency),
+          userIds: e.shares.map((share) => share.user_id),
+          // Keep a historical weighted split exact until its participant list is changed.
+          weights: Object.fromEntries(e.shares.map((share) => [share.user_id, String(Math.abs(share.amount) || (e.total === 0 ? 1 : 0))])),
+        }]
+      : e.items.map((item) => ({
           key: nextKey(),
           name: item.name,
           amount: toMajorString(item.total, e.currency),
-          userIds: item.shares.map((s) => s.user_id),
-        })),
-      );
-    }
+          userIds: item.shares.map((share) => share.user_id),
+          weights: Object.fromEntries(item.shares.map((share) => [share.user_id, share.weight ?? "1"])),
+        })));
   }
-
-  const totalMinor = toMinor(amount, currency);
-
-  /* Live preview, computed with the same algorithm the server uses. */
-  const previewShares = useMemo(() => {
-    if (mode !== "total" || totalMinor === null || participants.length === 0) return null;
-    const w = participants.map((id) => Number(weights[id] ?? "1") || 0);
-    if (w.every((x) => x === 0)) return null;
-    const split = previewEqualSplit(totalMinor, w);
-    return participants.map((id, i) => ({ userId: id, amount: split[i] }));
-  }, [mode, totalMinor, participants, weights]);
 
   const itemsTotal = useMemo(
     () => items.reduce((sum, item) => sum + (toMinor(item.amount, currency) ?? 0), 0),
@@ -191,16 +169,15 @@ export default function ExpenseForm() {
   );
 
   const itemPreview = useMemo(() => {
-    if (mode !== "items") return null;
     const perUser = new Map<string, number>();
     for (const item of items) {
       const value = toMinor(item.amount, currency);
       if (value === null || item.userIds.length === 0) continue;
-      const split = previewEqualSplit(value, item.userIds.map(() => 1));
+      const split = previewEqualSplit(value, item.userIds.map((id) => Number(item.weights?.[id] ?? "1")));
       item.userIds.forEach((id, i) => perUser.set(id, (perUser.get(id) ?? 0) + split[i]));
     }
     return perUser;
-  }, [mode, items, currency]);
+  }, [items, currency]);
 
   /* ------------------------------------------------------------- submit */
 
@@ -213,27 +190,16 @@ export default function ExpenseForm() {
         note,
         category_id: categoryId || null,
       };
-      const body =
-        mode === "total"
-          ? {
-              ...base,
-              split_mode: "total",
-              total: totalMinor,
-              shares: participants.map((id) => ({
-                user_id: id,
-                weight: customWeights ? (weights[id] ?? "1") : "1",
-              })),
-            }
-          : {
-              ...base,
-              split_mode: "items",
-              receipt_id: receiptId,
-              items: items.map((item) => ({
-                name: item.name.trim(),
-                total: toMinor(item.amount, currency) ?? 0,
-                shares: item.userIds.map((id) => ({ user_id: id, weight: "1" })),
-              })),
-            };
+      const body = {
+        ...base,
+        split_mode: "items",
+        receipt_id: receiptId,
+        items: items.map((item) => ({
+          name: item.name.trim(),
+          total: toMinor(item.amount, currency) ?? 0,
+          shares: item.userIds.map((id) => ({ user_id: id, weight: item.weights?.[id] ?? "1" })),
+        })),
+      };
       return expenseId
         ? api<Expense>(`/teams/${teamId}/expenses/${expenseId}`, { method: "PUT", body })
         : api<Expense>(`/teams/${teamId}/expenses`, { body });
@@ -252,23 +218,18 @@ export default function ExpenseForm() {
   /* --------------------------------------------------------- validation */
 
   const problems: string[] = [];
-  if (!title.trim()) problems.push("Give it a name.");
-  if (mode === "total") {
-    if (totalMinor === null) problems.push("Enter an amount.");
-    if (participants.length === 0) problems.push("Pick at least one person to split it between.");
-  } else {
-    if (items.length === 0) problems.push("Add at least one line.");
-    if (items.some((i) => !i.name.trim())) problems.push("Every line needs a name.");
-    if (items.some((i) => toMinor(i.amount, currency) === null))
-      problems.push("Every line needs an amount.");
-    if (items.some((i) => i.userIds.length === 0))
-      problems.push("Every line needs at least one person on it.");
-  }
+  if (!title.trim()) problems.push(t("Give it a name."));
+  if (items.length === 0) problems.push(t("Add at least one line."));
+  if (items.some((i) => !i.name.trim())) problems.push(t("Every line needs a name."));
+  if (items.some((i) => toMinor(i.amount, currency) === null))
+    problems.push(t("Every line needs an amount."));
+  if (items.some((i) => i.userIds.length === 0))
+    problems.push(t("Every line needs at least one person on it."));
   const valid = problems.length === 0;
 
   /* ------------------------------------------------------------- render */
 
-  const back = { to: `/teams/${teamId}?tab=expenses`, label: team.data?.name ?? "Back" };
+  const back = { to: `/teams/${teamId}?tab=expenses`, label: team.data?.name ?? t("Back") };
 
   if (team.isPending || (editing && existing.isPending)) {
     return (
@@ -280,11 +241,10 @@ export default function ExpenseForm() {
   }
 
   const updateItem = (key: string, patch: Partial<ItemDraft>) =>
-    setItems((list) => list.map((i) => (i.key === key ? { ...i, ...patch } : i)));
+    setItems((list) => list.map((i) => (i.key === key ? { ...i, ...patch, ...(patch.userIds ? { weights: undefined } : {}) } : i)));
 
   function applyParsed(receipt: Receipt, parsed: ParsedReceiptItem[]) {
     setReceiptId(receipt.id);
-    setMode("items");
     setScanning(false);
     if (receipt.merchant && !title) setTitle(receipt.merchant);
     if (receipt.purchased_at) setSpentAt(receipt.purchased_at);
@@ -308,7 +268,7 @@ export default function ExpenseForm() {
   }
 
   const canScan = Boolean(config.data?.receipt_scanning);
-  const started = Boolean(title.trim() || amount || items.length);
+  const started = Boolean(title.trim() || items.length);
   const cancel = () => navigate(`/teams/${teamId}?tab=expenses`);
 
   /* Pinned to the bottom edge: the primary action never scrolls out of reach. */
@@ -330,13 +290,13 @@ export default function ExpenseForm() {
             loading={save.isPending}
             disabled={!valid}
           >
-            {editing ? "Save changes" : "Add expense"}
+            {t(editing ? "Save changes" : "Add expense")}
           </Button>
           {/* Wide screens only: on a phone the header's back button is the way out.
               Wrapped because the button's own display class would beat `hidden`. */}
           <div className="hidden sm:block">
             <Button type="button" variant="ghost" onClick={cancel}>
-              Cancel
+              {t("Cancel")}
             </Button>
           </div>
         </div>
@@ -346,7 +306,7 @@ export default function ExpenseForm() {
 
   return (
     <AppShell back={back} bar={bar}>
-      <PageTitle title={editing ? "Edit expense" : "Add an expense"} />
+      <PageTitle title={t(editing ? "Edit expense" : "Add an expense")} />
 
       {scanning ? (
         <div className="mb-4">
@@ -368,9 +328,9 @@ export default function ExpenseForm() {
               <CameraIcon />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-sm font-medium text-body">Scan a receipt</span>
+              <span className="block text-sm font-medium text-body">{t("Scan a receipt")}</span>
               <span className="block text-[13px] text-muted">
-                Photograph it, then split it line by line.
+                {t("Photograph it, then split it line by line.")}
               </span>
             </span>
             <svg viewBox="0 0 16 16" className="size-4 shrink-0 text-subtle" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -382,7 +342,7 @@ export default function ExpenseForm() {
 
       <form id="expense-form" onSubmit={submit} className="flex flex-col gap-4">
         <Card className="flex flex-col gap-4 p-4 sm:p-5">
-          <Field label="What was it?">
+          <Field label={t("What was it?")}>
             {(id) => (
               <Input
                 id={id}
@@ -391,26 +351,26 @@ export default function ExpenseForm() {
                 enterKeyHint="next"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Weekly shop"
+                placeholder={t("Weekly shop")}
               />
             )}
           </Field>
 
           {/* Side by side from 360px: both fit, and the amount moves up the screen. */}
           <div className="grid gap-4 min-[360px]:grid-cols-2 min-[360px]:gap-3">
-            <Field label="Who paid?">
+            <Field label={t("Who paid?")}>
               {(id) => (
                 <Select id={id} value={payerId} onChange={(e) => setPayerId(e.target.value)}>
                   {members.map((m) => (
                     <option key={m.user_id} value={m.user_id}>
                       {m.display_name}
-                      {m.user_id === user?.id ? " (you)" : ""}
+                      {m.user_id === user?.id ? t(" (you)") : ""}
                     </option>
                   ))}
                 </Select>
               )}
             </Field>
-            <Field label="When?">
+            <Field label={t("When?")}>
               {(id) => (
                 <Input id={id} type="date" value={spentAt} onChange={(e) => setSpentAt(e.target.value)} />
               )}
@@ -418,233 +378,129 @@ export default function ExpenseForm() {
           </div>
         </Card>
 
-        {/* ----------------------------------------------------- split mode */}
+        {/* ----------------------------------------------------- line items */}
         <div
           ref={splitRef}
           className="scroll-mt-[calc(var(--header-h)+env(safe-area-inset-top)+1rem)]"
         >
           <Card className="flex flex-col gap-4 p-4 sm:p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div
-                role="tablist"
-                aria-label="How to split"
-                className="relative grid w-full grid-cols-2 rounded-control border border-line bg-surface-2 p-0.5 sm:inline-grid sm:w-auto"
-              >
-                {/* One thumb that slides, as a segmented control does. */}
-                <span
-                  aria-hidden="true"
-                  className={cx(
-                    "absolute inset-y-0.5 left-0.5 w-[calc(50%-2px)] rounded-[7px] bg-surface shadow-sm",
-                    "transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
-                    mode === "items" && "translate-x-full",
-                  )}
-                />
-                {(["total", "items"] as Mode[]).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    role="tab"
-                    aria-selected={mode === m}
-                    onClick={() => setMode(m)}
-                    className={cx(
-                      "relative h-8 rounded-[7px] px-3 text-[13px] transition-colors",
-                      "pointer-coarse:h-10 pointer-coarse:text-sm",
-                      mode === m ? "font-medium text-body" : "text-muted hover:text-body",
-                    )}
-                  >
-                    {m === "total" ? "One total" : "Line by line"}
-                  </button>
-                ))}
-              </div>
-
-              {canScan && editing && !scanning && (
+            {canScan && editing && !scanning && (
+              <div>
                 <Button type="button" variant="secondary" size="sm" onClick={() => setScanning(true)}>
                   <CameraIcon />
-                  Scan a receipt
+                  {t("Scan a receipt")}
                 </Button>
-              )}
-            </div>
+              </div>
+            )}
+            <p className="text-[13px] text-muted">
+              {t("Each line is split equally between the people highlighted on it. Turn someone off a line and they pay nothing towards it.")}
+            </p>
 
-            {mode === "total" ? (
-              <>
-                <Field label={`Amount (${currency})`}>
-                  {(id) => (
-                    <MoneyInput
-                      id={id}
-                      size="lg"
-                      enterKeyHint="done"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      placeholder="0.00"
-                    />
-                  )}
-                </Field>
+            {items.length === 0 && (
+              <p className="rounded-control bg-surface-2 px-3 py-6 text-center text-sm text-muted">
+                {t("No lines yet. Add one by hand, or scan a receipt.")}
+              </p>
+            )}
 
-                <div className="flex flex-col gap-2.5">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-[13px] font-medium text-body">Split between</span>
+            {/* A flat list rather than a box per line: on a phone every
+                pixel of width goes to the item name. */}
+            <ul className="-mt-1 flex flex-col divide-y divide-line">
+              {items.map((item) => (
+                <li key={item.key} className="flex flex-col gap-2.5 py-3.5 first:pt-1">
+                  <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-2">
+                    <div className="min-w-0">
+                      <label htmlFor={`${item.key}-name`} className="mb-1.5 block text-[12px] text-muted">{t("Name")}</label>
+                      <Input
+                        id={`${item.key}-name`}
+                        autoFocus={item.key === focusKey}
+                        autoCapitalize="sentences"
+                        enterKeyHint="next"
+                        value={item.name}
+                        onChange={(e) => updateItem(item.key, { name: e.target.value })}
+                        placeholder={t("Item")}
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <label htmlFor={`${item.key}-price`} className="mb-1.5 block text-[12px] text-muted">{t("Price")}</label>
+                      <MoneyInput
+                        id={`${item.key}-price`}
+                        enterKeyHint="done"
+                        value={item.amount}
+                        onChange={(e) => updateItem(item.key, { amount: e.target.value })}
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <PeoplePicker
+                        size="sm"
+                        members={members}
+                        selected={item.userIds}
+                        onToggle={(id) =>
+                          updateItem(item.key, {
+                            userIds: item.userIds.includes(id)
+                              ? item.userIds.filter((x) => x !== id)
+                              : [...item.userIds, id],
+                          })
+                        }
+                      />
+                    </div>
                     <button
                       type="button"
-                      onClick={() => setCustomWeights((c) => !c)}
-                      className="-my-2 py-2 text-[12px] text-muted underline underline-offset-4 hover:text-body pointer-coarse:text-[13px]"
+                      aria-label={t("Remove {name}", { name: item.name || t("Item") })}
+                      onClick={() => setItems((list) => list.filter((i) => i.key !== item.key))}
+                      className={cx(
+                        "-mr-1.5 grid size-8 shrink-0 place-items-center rounded-control text-muted",
+                        "transition-colors hover:bg-surface-2 hover:text-body active:bg-surface-2 active:duration-0",
+                        "pointer-coarse:-my-0.5 pointer-coarse:size-10",
+                      )}
                     >
-                      {customWeights ? "Split equally" : "Use custom shares"}
+                      <svg viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                        <path d="M4 4l8 8M12 4l-8 8" />
+                      </svg>
                     </button>
                   </div>
-                  <PeoplePicker
-                    members={members}
-                    selected={participants}
-                    onToggle={(id) =>
-                      setParticipants((list) =>
-                        list.includes(id) ? list.filter((x) => x !== id) : [...list, id],
-                      )
-                    }
-                  />
-                </div>
+                </li>
+              ))}
+            </ul>
 
-                {previewShares && (
-                  <ul className="flex flex-col divide-y divide-line rounded-control bg-surface-2 px-3">
-                    {previewShares.map(({ userId, amount: share }) => {
-                      const member = members.find((m) => m.user_id === userId);
-                      return (
-                        <li key={userId} className="flex items-center justify-between gap-3 py-2.5">
-                          <span className="truncate text-[13px] text-body">{member?.display_name}</span>
-                          <div className="flex items-center gap-3">
-                            {customWeights && (
-                              <input
-                                aria-label={`Share weight for ${member?.display_name}`}
-                                inputMode="decimal"
-                                enterKeyHint="done"
-                                value={weights[userId] ?? "1"}
-                                onChange={(e) =>
-                                  setWeights((w) => ({ ...w, [userId]: e.target.value }))
-                                }
-                                className={cx(
-                                  "tabular h-7 w-14 rounded-control border border-line bg-surface px-2 text-right text-[13px]",
-                                  "pointer-coarse:h-9 pointer-coarse:w-16 pointer-coarse:text-base",
-                                )}
-                              />
-                            )}
-                            <Money minor={share} currency={currency} className="text-[13px]" />
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </>
-            ) : (
-              <>
-                <p className="text-[13px] text-muted">
-                  Each line is split equally between the people highlighted on it. Turn someone off a
-                  line and they pay nothing towards it.
-                </p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <Button type="button" variant="secondary" size="sm" onClick={addLine}>
+                <svg viewBox="0 0 16 16" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                  <path d="M8 3v10M3 8h10" />
+                </svg>
+                {t("Add a line")}
+              </Button>
+              <p className="text-sm text-muted">
+                {t("Total")} <Money minor={itemsTotal} currency={currency} className="font-medium" />
+              </p>
+            </div>
 
-                {items.length === 0 && (
-                  <p className="rounded-control bg-surface-2 px-3 py-6 text-center text-sm text-muted">
-                    No lines yet. Add one by hand, or scan a receipt.
-                  </p>
-                )}
-
-                {/* A flat list rather than a box per line: on a phone every
-                    pixel of width goes to the item name. */}
-                <ul className="-mt-1 flex flex-col divide-y divide-line">
-                  {items.map((item) => (
-                    <li key={item.key} className="flex flex-col gap-2.5 py-3.5 first:pt-1">
-                      <div className="flex gap-2">
-                        <div className="min-w-0 flex-1">
-                          <Input
-                            aria-label="Item name"
-                            autoFocus={item.key === focusKey}
-                            autoCapitalize="sentences"
-                            enterKeyHint="next"
-                            value={item.name}
-                            onChange={(e) => updateItem(item.key, { name: e.target.value })}
-                            placeholder="Item"
-                          />
-                        </div>
-                        <div className="w-28 shrink-0">
-                          <MoneyInput
-                            aria-label="Item amount"
-                            enterKeyHint="done"
-                            value={item.amount}
-                            onChange={(e) => updateItem(item.key, { amount: e.target.value })}
-                            placeholder="0.00"
-                          />
-                        </div>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <div className="min-w-0 flex-1">
-                          <PeoplePicker
-                            size="sm"
-                            members={members}
-                            selected={item.userIds}
-                            onToggle={(id) =>
-                              updateItem(item.key, {
-                                userIds: item.userIds.includes(id)
-                                  ? item.userIds.filter((x) => x !== id)
-                                  : [...item.userIds, id],
-                              })
-                            }
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          aria-label={`Remove ${item.name || "item"}`}
-                          onClick={() => setItems((list) => list.filter((i) => i.key !== item.key))}
-                          className={cx(
-                            "-mr-1.5 grid size-8 shrink-0 place-items-center rounded-control text-muted",
-                            "transition-colors hover:bg-surface-2 hover:text-body active:bg-surface-2 active:duration-0",
-                            "pointer-coarse:-my-0.5 pointer-coarse:size-10",
-                          )}
-                        >
-                          <svg viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                            <path d="M4 4l8 8M12 4l-8 8" />
-                          </svg>
-                        </button>
-                      </div>
+            {itemPreview && itemPreview.size > 0 && (
+              <ul className="flex flex-col divide-y divide-line rounded-control bg-surface-2 px-3">
+                {members
+                  .filter((m) => itemPreview.has(m.user_id))
+                  .map((member) => (
+                    <li key={member.user_id} className="flex items-center justify-between gap-3 py-2.5">
+                      <span className="truncate text-[13px] text-body">{member.display_name}</span>
+                      <Money
+                        minor={itemPreview.get(member.user_id) ?? 0}
+                        currency={currency}
+                        className="text-[13px]"
+                      />
                     </li>
                   ))}
-                </ul>
-
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <Button type="button" variant="secondary" size="sm" onClick={addLine}>
-                    <svg viewBox="0 0 16 16" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                      <path d="M8 3v10M3 8h10" />
-                    </svg>
-                    Add a line
-                  </Button>
-                  <p className="text-sm text-muted">
-                    Total <Money minor={itemsTotal} currency={currency} className="font-medium" />
-                  </p>
-                </div>
-
-                {itemPreview && itemPreview.size > 0 && (
-                  <ul className="flex flex-col divide-y divide-line rounded-control bg-surface-2 px-3">
-                    {members
-                      .filter((m) => itemPreview.has(m.user_id))
-                      .map((member) => (
-                        <li key={member.user_id} className="flex items-center justify-between gap-3 py-2.5">
-                          <span className="truncate text-[13px] text-body">{member.display_name}</span>
-                          <Money
-                            minor={itemPreview.get(member.user_id) ?? 0}
-                            currency={currency}
-                            className="text-[13px]"
-                          />
-                        </li>
-                      ))}
-                  </ul>
-                )}
-              </>
+              </ul>
             )}
           </Card>
         </div>
 
         <Card className="flex flex-col gap-4 p-4 sm:p-5">
-          <Field label="Category" hint="Optional, but it makes the breakdown useful.">
+          <Field label={t("Category")} hint={t("Optional, but it makes the breakdown useful.")}>
             {(id) => (
               <Select id={id} value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-                <option value="">No category</option>
+                <option value="">{t("No category")}</option>
                 {categories.data?.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.emoji} {c.name}
@@ -653,7 +509,7 @@ export default function ExpenseForm() {
               </Select>
             )}
           </Field>
-          <Field label="Note" hint="Anything worth remembering later.">
+          <Field label={t("Note")} hint={t("Anything worth remembering later.")}>
             {(id) => (
               <Textarea id={id} value={note} onChange={(e) => setNote(e.target.value)} />
             )}
@@ -668,12 +524,12 @@ export default function ExpenseForm() {
             className="mt-2 w-full sm:w-auto sm:self-start"
             loading={remove.isPending}
             onClick={() => {
-              if (window.confirm("Delete this expense? Balances will be recalculated.")) {
+              if (window.confirm(t("Delete this expense? Balances will be recalculated."))) {
                 remove.mutate(expenseId!, { onSuccess: cancel });
               }
             }}
           >
-            Delete expense
+            {t("Delete expense")}
           </Button>
         )}
       </form>

@@ -17,16 +17,19 @@ import {
 } from "../components/ui";
 import { keys, useServerConfig, useTeams } from "../hooks/queries";
 import { ApiError, api } from "../lib/api";
+import { personWord, useI18n } from "../lib/i18n";
+import { formatMoney } from "../lib/money";
 import type { TeamDetail, TeamSummary } from "../lib/types";
 
 const CURRENCIES = ["RUB", "USD", "EUR", "GBP", "KZT", "GEL", "RSD", "TRY"];
 
-function balanceLabel(minor: number): string {
-  if (minor === 0) return "All settled";
-  return minor > 0 ? "you are owed" : "you owe";
+function balanceLabel(minor: number, t: (text: string) => string): string {
+  if (minor === 0) return t("All settled");
+  return minor > 0 ? t("you are owed") : t("you owe");
 }
 
 function TeamCard({ team }: { team: TeamSummary }) {
+  const { t, language } = useI18n();
   return (
     <Link
       to={`/teams/${team.id}`}
@@ -38,18 +41,19 @@ function TeamCard({ team }: { team: TeamSummary }) {
       <div className="min-w-0">
         <p className="truncate font-medium text-body">{team.name}</p>
         <p className="mt-0.5 text-[13px] text-muted">
-          {team.member_count} {team.member_count === 1 ? "person" : "people"}
+          {team.member_count} {personWord(team.member_count, language)}
         </p>
       </div>
       <div className="shrink-0 text-right">
         <Money minor={team.my_balance} currency={team.currency} signed className="text-base font-medium" />
-        <p className="mt-0.5 text-[12px] text-muted">{balanceLabel(team.my_balance)}</p>
+        <p className="mt-0.5 text-[12px] text-muted">{balanceLabel(team.my_balance, t)}</p>
       </div>
     </Link>
   );
 }
 
 function NewTeamForm({ onDone }: { onDone: () => void }) {
+  const { t } = useI18n();
   const client = useQueryClient();
   const config = useServerConfig();
   const [name, setName] = useState("");
@@ -72,7 +76,7 @@ function NewTeamForm({ onDone }: { onDone: () => void }) {
     <Card className="p-4 sm:p-5">
       <form onSubmit={submit} className="flex flex-col gap-4">
         <FormError message={create.error instanceof ApiError ? create.error.message : null} />
-        <Field label="Team name" hint="A flat, a trip, a household — whatever you share.">
+        <Field label={t("Team name")} hint={t("A flat, a trip, a household — whatever you share.")}>
           {(id) => (
             <Input
               id={id}
@@ -82,11 +86,11 @@ function NewTeamForm({ onDone }: { onDone: () => void }) {
               enterKeyHint="done"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Flat 42"
+              placeholder={t("Flat 42")}
             />
           )}
         </Field>
-        <Field label="Currency" hint="Everything in this team is tracked in one currency.">
+        <Field label={t("Currency")} hint={t("Everything in this team is tracked in one currency.")}>
           {(id) => (
             <Select id={id} value={currency} onChange={(e) => setCurrency(e.target.value)}>
               {CURRENCIES.map((code) => (
@@ -99,10 +103,10 @@ function NewTeamForm({ onDone }: { onDone: () => void }) {
         </Field>
         <div className="flex gap-2">
           <Button type="submit" loading={create.isPending} disabled={!name.trim()}>
-            Create team
+            {t("Create team")}
           </Button>
           <Button type="button" variant="ghost" onClick={onDone}>
-            Cancel
+            {t("Cancel")}
           </Button>
         </div>
       </form>
@@ -111,17 +115,23 @@ function NewTeamForm({ onDone }: { onDone: () => void }) {
 }
 
 export default function Teams() {
+  const { t } = useI18n();
   const teams = useTeams();
   const [creating, setCreating] = useState(false);
+  const owedByCurrency = new Map<string, number>();
+  for (const team of teams.data ?? []) {
+    if (team.my_balance < 0) owedByCurrency.set(team.currency, (owedByCurrency.get(team.currency) ?? 0) - team.my_balance);
+  }
+  const owed = [...owedByCurrency].map(([currency, minor]) => formatMoney(minor, currency)).join(" · ");
 
   return (
     <AppShell>
       <PageTitle
-        title="Your teams"
-        subtitle="Everyone you split costs with."
+        title={t("Your teams")}
+        subtitle={teams.data ? (owed ? t("You owe {amount}", { amount: owed }) : t("You owe nothing")) : t("Everyone you split costs with.")}
         action={
           !creating && teams.data?.length ? (
-            <Button onClick={() => setCreating(true)}>New team</Button>
+            <Button onClick={() => setCreating(true)}>{t("New team")}</Button>
           ) : undefined
         }
       />
@@ -149,7 +159,7 @@ export default function Teams() {
       {teams.isError && (
         <Card>
           <ErrorState
-            message={teams.error instanceof ApiError ? teams.error.message : "Could not load your teams."}
+            message={teams.error instanceof ApiError ? teams.error.message : t("Could not load your teams.")}
             onRetry={() => teams.refetch()}
           />
         </Card>
@@ -158,9 +168,9 @@ export default function Teams() {
       {teams.data && teams.data.length === 0 && !creating && (
         <Card>
           <EmptyState
-            title="No teams yet"
-            body="Create one for your flat, then send the invite link to the people you live with. Everything you add gets split between whoever was actually in on it."
-            action={<Button onClick={() => setCreating(true)}>Create your first team</Button>}
+            title={t("No teams yet")}
+            body={t("Create one for your flat, then send the invite link to the people you live with. Everything you add gets split between whoever was actually in on it.")}
+            action={<Button onClick={() => setCreating(true)}>{t("Create your first team")}</Button>}
           />
         </Card>
       )}

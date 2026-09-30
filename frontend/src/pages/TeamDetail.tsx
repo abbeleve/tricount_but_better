@@ -7,6 +7,7 @@ import { PeopleTab } from "../components/PeopleTab";
 import { Card, ErrorState, PRESS, Skeleton, cx } from "../components/ui";
 import { useTeam } from "../hooks/queries";
 import { ApiError } from "../lib/api";
+import { personWord, useI18n } from "../lib/i18n";
 
 const TABS = [
   { id: "balances", label: "Balances" },
@@ -24,6 +25,7 @@ const BACK = { to: "/", label: "All teams" };
  * measured from the live buttons, so it holds at any width and any label length.
  */
 function Tabs({ active, onSelect }: { active: TabId; onSelect: (id: TabId) => void }) {
+  const { t } = useI18n();
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [bar, setBar] = useState<{ x: number; w: number } | null>(null);
 
@@ -46,7 +48,7 @@ function Tabs({ active, onSelect }: { active: TabId; onSelect: (id: TabId) => vo
         "border-b border-line",
       )}
     >
-      <div role="tablist" aria-label="Team sections" className="relative flex sm:gap-1">
+      <div role="tablist" aria-label={t("Team sections")} className="relative flex sm:gap-1">
         {TABS.map((tab) => (
           <button
             key={tab.id}
@@ -62,7 +64,7 @@ function Tabs({ active, onSelect }: { active: TabId; onSelect: (id: TabId) => vo
               active === tab.id ? "font-medium text-body" : "text-muted hover:text-body",
             )}
           >
-            {tab.label}
+            {t(tab.label)}
           </button>
         ))}
         {bar && (
@@ -78,6 +80,7 @@ function Tabs({ active, onSelect }: { active: TabId; onSelect: (id: TabId) => vo
 }
 
 export default function TeamDetailPage() {
+  const { t, language } = useI18n();
   const { teamId = "" } = useParams();
   const [params, setParams] = useSearchParams();
   const team = useTeam(teamId);
@@ -86,7 +89,7 @@ export default function TeamDetailPage() {
 
   if (team.isPending) {
     return (
-      <AppShell back={BACK}>
+      <AppShell back={{ ...BACK, label: t(BACK.label) }}>
         <Skeleton className="mb-6 h-9 w-56" />
         <Card className="h-64" />
       </AppShell>
@@ -95,13 +98,13 @@ export default function TeamDetailPage() {
 
   if (team.isError || !team.data) {
     return (
-      <AppShell back={BACK}>
+      <AppShell back={{ ...BACK, label: t(BACK.label) }}>
         <Card>
           <ErrorState
             message={
               team.error instanceof ApiError && team.error.status === 404
-                ? "This team does not exist, or you are not a member of it."
-                : "Could not load this team."
+                ? t("This team does not exist, or you are not a member of it.")
+                : t("Could not load this team.")
             }
             onRetry={() => team.refetch()}
           />
@@ -111,10 +114,10 @@ export default function TeamDetailPage() {
   }
 
   return (
-    <AppShell back={BACK}>
+    <AppShell back={{ ...BACK, label: t(BACK.label) }}>
       <PageTitle
         title={team.data.name}
-        subtitle={`${team.data.members.length} people · ${team.data.currency}`}
+        subtitle={`${team.data.members.length} ${personWord(team.data.members.length, language)} · ${team.data.currency}`}
         action={
           <Link
             to={`/teams/${teamId}/expenses/new`}
@@ -124,7 +127,7 @@ export default function TeamDetailPage() {
               PRESS,
             )}
           >
-            Add expense
+            {t("Add expense")}
           </Link>
         }
       />
@@ -151,7 +154,7 @@ export default function TeamDetailPage() {
         <svg viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <path d="M8 3v10M3 8h10" />
         </svg>
-        Add expense
+        {t("Add expense")}
       </Link>
     </AppShell>
   );
