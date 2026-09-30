@@ -76,10 +76,9 @@ VLM_MODEL=claude-sonnet-5
 CLAUDE_CODE_OAUTH_TOKEN=
 CLAUDE_CLI_PATH=$CLAUDE_BIN
 
-# Pick ONE egress route if this host cannot reach api.anthropic.com directly.
-# See deploy/README.md.
-# ANTHROPIC_PROXY_URL=socks5://user:pass@vpn-host:1080
-# ANTHROPIC_BASE_URL=https://relay.example.com
+# For eligible Claude deployments with a corporate HTTP(S) proxy only.
+# Check provider availability in deploy/README.md first.
+# ANTHROPIC_PROXY_URL=http://proxy-host:8080
 ENVEOF
   echo "    generated a JWT secret; receipt scanning is disabled until configured"
 else

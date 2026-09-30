@@ -53,98 +53,31 @@ sudo certbot --nginx -d tricount-194-87-111-40.sslip.io
 Open ports 80 and 443 in the server firewall. Keep port 8010 private.
 The script installs nginx, Certbot, Node, the Claude Code CLI, and `uv`,
 creates the users, generates a JWT secret, installs the systemd unit and nginx
-site, and adds a nightly backup. To deploy before configuring receipt scanning,
-set `VLM_PROVIDER=disabled` in `/opt/tricount/.env`. Otherwise supply
-`CLAUDE_CODE_OAUTH_TOKEN` and an egress route if required.
+site, and adds a nightly backup. Receipt scanning starts disabled. Configure a
+provider and its credentials only after checking availability for your deployment.
 
 ---
 
-## 2. Receipt-scanning egress (only if needed)
+## 2. Receipt scanning and provider availability
 
-If the server cannot reach `api.anthropic.com`, the receipt parser needs an
-egress route. Pick **one**. Otherwise leave both egress settings unset.
-All three routes are supported by the same code; they differ only in where
-the tunnel lives.
+The upload, parsing, and editable expense form are already implemented. Set
+`VLM_PROVIDER=disabled` until the chosen model provider is available for your
+deployment and users. Anthropic's [Supported Regions Policy](https://www.anthropic.com/supported-countries)
+does not list Russia. Routing a Russian VPS through a VPN or relay does not
+itself make a deployment eligible for Claude. For a service operating in
+Russia, use a provider available there or add a local OCR parser behind
+`src/tricount_but_better/vlm/base.py`.
 
-### (a) A SOCKS5 or HTTP proxy — simplest
+For an eligible Claude deployment that needs a corporate network proxy, this
+app accepts `ANTHROPIC_PROXY_URL=http://proxy-host:port`. It passes the setting
+to Claude Code as `HTTPS_PROXY`/`HTTP_PROXY` and to the Messages API client.
+Anthropic's [Claude Code proxy documentation](https://docs.anthropic.com/en/docs/claude-code/corporate-proxy)
+supports HTTP(S) proxies, but explicitly says the CLI does **not** support
+SOCKS proxies. The `socks` Python extra applies only to the Messages API
+client. Leave the proxy unset when direct egress is available.
+`ANTHROPIC_BASE_URL` is available for an approved Anthropic-compatible gateway.
 
-If your VPN gives you a proxy endpoint, or you can run one on the far side:
-
-```bash
-# /opt/tricount/.env
-ANTHROPIC_PROXY_URL=socks5://user:pass@vpn-host:1080
-```
-
-The backend passes this to the Claude Code CLI as `HTTPS_PROXY`/`HTTP_PROXY`,
-and to the Anthropic SDK as an httpx proxy. Nothing else on the box is
-affected — your own SSH, apt and git stay on the direct route.
-
-`socks5://` needs the extra that the deploy workflow already installs
-(`uv sync --extra socks`). An `http://` proxy needs nothing extra.
-
-### (b) A relay on a VPS you own abroad — most robust
-
-Run a thin reverse proxy on a host outside the blocked region and point the app
-at it. Nothing tunnels; it is an ordinary HTTPS request to your own domain.
-
-On the foreign VPS, with Caddy:
-
-```
-relay.example.com {
-    reverse_proxy https://api.anthropic.com {
-        header_up Host api.anthropic.com
-    }
-}
-```
-
-Then:
-
-```bash
-# /opt/tricount/.env
-ANTHROPIC_BASE_URL=https://relay.example.com
-```
-
-Restrict the relay to your server's IP — anyone who finds it can spend your
-tokens:
-
-```
-@notmine not remote_ip <your.server.ip>
-respond @notmine 403
-```
-
-### (c) A WireGuard tunnel, routed by user — no proxy needed
-
-Route only the `tricount` user's traffic through the tunnel, leaving the rest of
-the machine alone. Leave both `ANTHROPIC_PROXY_URL` and `ANTHROPIC_BASE_URL`
-empty; egress is handled below the application.
-
-```bash
-sudo apt install wireguard
-sudo install -m 600 your-vpn.conf /etc/wireguard/wg0.conf
-```
-
-Edit `/etc/wireguard/wg0.conf` so it installs its routes in a side table
-instead of hijacking the default route, and steer one UID into it:
-
-```ini
-[Interface]
-# ... Address / PrivateKey / DNS as your provider gave them ...
-Table = 200
-PostUp   = ip rule add uidrange %i-%i table 200 priority 1000
-PostDown = ip rule del uidrange %i-%i table 200 priority 1000
-```
-
-Replace `%i` with the numeric uid of the service user
-(`id -u tricount`), then:
-
-```bash
-sudo systemctl enable --now wg-quick@wg0
-# verify: the service user goes through the tunnel, root does not
-sudo -u tricount curl -s https://ifconfig.me; echo
-curl -s https://ifconfig.me; echo
-```
-
-### Checking whichever you chose
+### Check the configured provider
 
 ```bash
 sudo -u tricount env HOME=/opt/tricount/home \

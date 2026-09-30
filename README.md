@@ -21,6 +21,8 @@ Photograph the receipt, and Claude reads it into editable line items.
 - **Receipt scanning** — one or more photos go to Claude, which returns
   structured line items. Everyone is on every line by default; tap a name off a
   line and they stop paying towards it.
+- **Planned purchases** — keep a shopping list with optional prices. Finish the
+  purchase through the expense form; plans do not affect balances.
 - **Categories** and a spending breakdown.
 - Works on a phone and on a desktop; light and dark.
 
@@ -95,7 +97,7 @@ uv run python scripts/check_vlm.py photo.jpg    # your own
 ## Tests
 
 ```bash
-uv run pytest                       # 60 tests, in-memory SQLite, no network
+uv run pytest                       # in-memory SQLite, no network
 uv run ruff check src tests scripts
 cd frontend && npx tsc -b --noEmit && npx eslint . && npm run build
 ```
@@ -106,8 +108,7 @@ offline.
 
 ## Deploying
 
-The server is the interesting part — including how to get model traffic out of a
-region where `api.anthropic.com` is blocked, and which GitHub secrets to create.
+The deployment guide covers model-provider availability and GitHub secrets.
 See **[deploy/README.md](deploy/README.md)**.
 
 ```bash
@@ -124,10 +125,10 @@ src/tricount_but_better/
 ├── services.py     keeps sum(shares) == total on every write
 ├── models.py       SQLAlchemy schema
 ├── images.py       upload validation, EXIF stripping, re-encoding
-├── routers/        auth, teams, invites, categories, expenses, receipts
+├── routers/        auth, teams, invites, categories, expenses, plans, receipts
 └── vlm/            the receipt parser — schema, prompt, two providers
 frontend/src/
 ├── lib/            API client, money formatting (mirrors money.py)
 ├── components/     UI primitives, charts, team tabs, receipt scanner
-└── pages/          login, register, teams, team detail, expense form
+└── pages/          login, register, teams, team detail, expense and plan forms
 ```

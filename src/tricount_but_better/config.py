@@ -57,12 +57,10 @@ class Settings(BaseSettings):
     claude_cli_path: str | None = None
     anthropic_api_key: str | None = None
 
-    # --- egress / geo-proxy ---
-    # Set ONE of these when the host cannot reach api.anthropic.com directly.
-    #   anthropic_proxy_url : HTTP or SOCKS5 proxy, e.g. socks5://user:pass@host:1080
-    #   anthropic_base_url  : reverse-proxy relay you control abroad, e.g. https://relay.example.com
-    # Leaving both unset means direct egress (correct when a WireGuard tunnel
-    # already covers the whole process -- see deploy/README.md).
+    # --- model-provider egress ---
+    # Claude Code supports HTTP(S) proxies, not SOCKS. The Messages API client
+    # can use SOCKS when the optional Python extra is installed.
+    # A proxy does not change Anthropic's supported-region requirements.
     anthropic_proxy_url: str | None = None
     anthropic_base_url: str | None = None
 
