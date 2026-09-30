@@ -3,6 +3,7 @@ import { Navigate, Route, BrowserRouter as Router, Routes, useLocation } from "r
 import { LanguageProvider, useI18n } from "./lib/i18n";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
 import ExpenseForm from "./pages/ExpenseForm";
+import PlanForm from "./pages/PlanForm";
 import JoinTeam from "./pages/JoinTeam";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -55,6 +56,8 @@ export default function App() {
               <Route path="/register" element={<RedirectIfSignedIn><Register /></RedirectIfSignedIn>} />
               <Route path="/" element={<RequireAuth><Teams /></RequireAuth>} />
               <Route path="/teams/:teamId" element={<RequireAuth><TeamDetail /></RequireAuth>} />
+              <Route path="/teams/:teamId/plans/new" element={<RequireAuth><PlanForm /></RequireAuth>} />
+              <Route path="/teams/:teamId/plans/:planId" element={<RequireAuth><PlanForm /></RequireAuth>} />
               <Route
                 path="/teams/:teamId/expenses/new"
                 element={<RequireAuth><ExpenseForm /></RequireAuth>}

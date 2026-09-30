@@ -1,11 +1,12 @@
 import { useMutation } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppShell, PageTitle } from "../components/Layout";
 import { ReceiptScanner } from "../components/ReceiptScanner";
 import {
   Button,
   Card,
+  ErrorState,
   Field,
   FormError,
   Input,
@@ -20,6 +21,7 @@ import {
   useCategories,
   useDeleteExpense,
   useExpense,
+  usePlan,
   useServerConfig,
   useTeam,
   useTeamInvalidation,
@@ -93,6 +95,8 @@ function PeoplePicker({
 
 export default function ExpenseForm() {
   const { teamId = "", expenseId } = useParams();
+  const [params] = useSearchParams();
+  const planId = expenseId ? null : params.get("planId");
   const navigate = useNavigate();
   const { user } = useAuth();
   const { t } = useI18n();
@@ -100,6 +104,7 @@ export default function ExpenseForm() {
   const categories = useCategories(teamId);
   const config = useServerConfig();
   const existing = useExpense(teamId, expenseId);
+  const planned = usePlan(teamId, planId);
   const invalidate = useTeamInvalidation(teamId);
   const remove = useDeleteExpense(teamId);
 
@@ -108,6 +113,7 @@ export default function ExpenseForm() {
   const currency = team.data?.currency ?? "RUB";
 
   const [loaded, setLoaded] = useState(false);
+  const [planLoaded, setPlanLoaded] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [receiptId, setReceiptId] = useState<string | null>(null);
 
@@ -163,6 +169,19 @@ export default function ExpenseForm() {
         })));
   }
 
+  if (planId && !planLoaded && planned.data && team.data) {
+    setPlanLoaded(true);
+    setTitle(planned.data.title);
+    setNote(planned.data.note);
+    setCategoryId(planned.data.category_id ?? "");
+    setItems(planned.data.items.map((item) => ({
+      key: nextKey(),
+      name: item.name,
+      amount: item.total === null ? "" : toMajorString(item.total, currency),
+      userIds: members.map((member) => member.user_id),
+    })));
+  }
+
   const itemsTotal = useMemo(
     () => items.reduce((sum, item) => sum + (toMinor(item.amount, currency) ?? 0), 0),
     [items, currency],
@@ -202,6 +221,8 @@ export default function ExpenseForm() {
       };
       return expenseId
         ? api<Expense>(`/teams/${teamId}/expenses/${expenseId}`, { method: "PUT", body })
+        : planId
+        ? api<Expense>(`/teams/${teamId}/plans/${planId}/complete`, { body })
         : api<Expense>(`/teams/${teamId}/expenses`, { body });
     },
     onSuccess: () => {
@@ -229,15 +250,22 @@ export default function ExpenseForm() {
 
   /* ------------------------------------------------------------- render */
 
-  const back = { to: `/teams/${teamId}?tab=expenses`, label: team.data?.name ?? t("Back") };
+  const back = {
+    to: planId ? `/teams/${teamId}/plans/${planId}` : `/teams/${teamId}?tab=expenses`,
+    label: team.data?.name ?? t("Back"),
+  };
 
-  if (team.isPending || (editing && existing.isPending)) {
+  if (team.isPending || (editing && existing.isPending) || (planId && planned.isPending)) {
     return (
       <AppShell back={back}>
         <Skeleton className="mb-6 h-9 w-56" />
         <Card className="h-96" />
       </AppShell>
     );
+  }
+
+  if (planId && planned.isError) {
+    return <AppShell back={back}><Card><ErrorState message={t("Could not load this plan.")} onRetry={() => planned.refetch()} /></Card></AppShell>;
   }
 
   const updateItem = (key: string, patch: Partial<ItemDraft>) =>
@@ -269,7 +297,7 @@ export default function ExpenseForm() {
 
   const canScan = Boolean(config.data?.receipt_scanning);
   const started = Boolean(title.trim() || items.length);
-  const cancel = () => navigate(`/teams/${teamId}?tab=expenses`);
+  const cancel = () => navigate(back.to);
 
   /* Pinned to the bottom edge: the primary action never scrolls out of reach. */
   const bar = (
@@ -290,7 +318,7 @@ export default function ExpenseForm() {
             loading={save.isPending}
             disabled={!valid}
           >
-            {t(editing ? "Save changes" : "Add expense")}
+            {t(editing ? "Save changes" : planId ? "Record purchase" : "Add expense")}
           </Button>
           {/* Wide screens only: on a phone the header's back button is the way out.
               Wrapped because the button's own display class would beat `hidden`. */}
@@ -306,7 +334,8 @@ export default function ExpenseForm() {
 
   return (
     <AppShell back={back} bar={bar}>
-      <PageTitle title={t(editing ? "Edit expense" : "Add an expense")} />
+      <PageTitle title={t(editing ? "Edit expense" : planId ? "Complete purchase" : "Add an expense")}
+        subtitle={planId ? t("Fill in the prices and choose who shares each item.") : undefined} />
 
       {scanning ? (
         <div className="mb-4">

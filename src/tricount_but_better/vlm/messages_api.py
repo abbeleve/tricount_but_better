@@ -3,7 +3,7 @@
 Escape hatch for hosts that have an ``ANTHROPIC_API_KEY``: it is cheaper per
 call and easier to rate-limit than spawning a CLI, but it will not accept a
 Claude Code OAuth token. Proxy and relay settings are applied to the HTTP client
-so the same geo-routing options work here as in the agent provider.
+so an eligible deployment can use its configured network route.
 """
 
 from __future__ import annotations

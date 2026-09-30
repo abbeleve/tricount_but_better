@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# SOCKS5 support for routing model traffic through a VPN endpoint.
+# SOCKS5 support for the Messages API client (Claude Code CLI does not support SOCKS).
 socks = ["httpx[socks]>=0.28"]
 # Only needed if you outgrow SQLite and switch DATABASE_URL to Postgres.
 postgres = ["psycopg[binary]>=3.2"]

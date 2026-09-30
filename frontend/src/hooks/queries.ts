@@ -9,6 +9,7 @@ import type {
   Expense,
   ExpenseList,
   Invite,
+  PlannedExpense,
   Receipt,
   ServerConfig,
   Settlement,
@@ -26,6 +27,8 @@ export const keys = {
   categoryTotals: (id: string) => ["team", id, "category-totals"] as const,
   expenses: (id: string) => ["team", id, "expenses"] as const,
   expense: (id: string, eid: string) => ["team", id, "expense", eid] as const,
+  plans: (id: string) => ["team", id, "plans"] as const,
+  plan: (id: string, pid: string) => ["team", id, "plan", pid] as const,
   settlements: (id: string) => ["team", id, "settlements"] as const,
   invites: (id: string) => ["team", id, "invites"] as const,
   receipt: (id: string, rid: string) => ["team", id, "receipt", rid] as const,
@@ -76,6 +79,19 @@ export const useExpense = (teamId: string, expenseId: string | undefined) =>
     queryKey: keys.expense(teamId, expenseId ?? ""),
     queryFn: () => api<Expense>(`/teams/${teamId}/expenses/${expenseId}`),
     enabled: Boolean(expenseId),
+  });
+
+export const usePlans = (teamId: string) =>
+  useQuery({
+    queryKey: keys.plans(teamId),
+    queryFn: () => api<PlannedExpense[]>(`/teams/${teamId}/plans`),
+  });
+
+export const usePlan = (teamId: string, planId: string | null | undefined) =>
+  useQuery({
+    queryKey: keys.plan(teamId, planId ?? ""),
+    queryFn: () => api<PlannedExpense>(`/teams/${teamId}/plans/${planId}`),
+    enabled: Boolean(planId),
   });
 
 export const useSettlements = (teamId: string) =>

@@ -90,6 +90,21 @@ export interface ExpenseList {
   total_count: number;
 }
 
+export interface PlannedItem {
+  name: string;
+  total: number | null;
+}
+
+export interface PlannedExpense {
+  id: string;
+  team_id: string;
+  title: string;
+  note: string;
+  category_id: string | null;
+  items: PlannedItem[];
+  created_at: string;
+}
+
 export interface Balance {
   user_id: string;
   display_name: string;

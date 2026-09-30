@@ -56,8 +56,7 @@ class AgentSdkReceiptParser:
         if s.anthropic_base_url:
             env["ANTHROPIC_BASE_URL"] = s.anthropic_base_url
         if s.anthropic_proxy_url:
-            # The CLI's HTTP stack honours the standard proxy variables, so this
-            # covers both an HTTP and a SOCKS5 tunnel out of a blocked region.
+            # Claude Code supports HTTP(S) proxies through these variables.
             env["HTTPS_PROXY"] = s.anthropic_proxy_url
             env["HTTP_PROXY"] = s.anthropic_proxy_url
         # Nothing here needs telemetry or auto-update chatter leaving the box.

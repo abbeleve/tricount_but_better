@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .routers import auth, categories, expenses, invites, receipts, teams
+from .routers import auth, categories, expenses, invites, planned_expenses, receipts, teams
 
 logging.basicConfig(level=logging.INFO)
 
@@ -35,6 +35,7 @@ def create_app() -> FastAPI:
         invites.router,
         categories.router,
         expenses.router,
+        planned_expenses.router,
         receipts.router,
     ):
         app.include_router(router, prefix="/api")

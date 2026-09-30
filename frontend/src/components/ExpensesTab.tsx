@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Card, Chip, EmptyState, Input, Money, ROW_PRESS, Skeleton, cx } from "./ui";
-import { useCategories, useExpenses } from "../hooks/queries";
+import { Card, Chip, EmptyState, ErrorState, Input, Money, ROW_PRESS, Skeleton, cx } from "./ui";
+import { useCategories, useExpenses, usePlans } from "../hooks/queries";
 import { useAuth } from "../hooks/useAuth";
 import { useI18n } from "../lib/i18n";
 import type { Expense, TeamDetail } from "../lib/types";
@@ -30,6 +30,7 @@ export function ExpensesTab({ team }: { team: TeamDetail }) {
   const { user } = useAuth();
   const [search, setSearch] = useState("");
   const expenses = useExpenses(team.id, search);
+  const plans = usePlans(team.id);
   const categories = useCategories(team.id);
 
   const nameOf = (id: string) =>
@@ -41,6 +42,39 @@ export function ExpensesTab({ team }: { team: TeamDetail }) {
 
   return (
     <div className="flex flex-col gap-4">
+      <section>
+        <div className="mb-2 flex items-center justify-between gap-3 px-1">
+          <div>
+            <h3 className="text-sm font-medium text-body">{t("Upcoming purchases")}</h3>
+            <p className="text-[12px] text-muted">{t("Shopping lists stay out of balances until purchased.")}</p>
+          </div>
+          <Link to={`/teams/${team.id}/plans/new`}
+            className="shrink-0 rounded-control border border-line-strong px-3 py-2 text-[13px] font-medium text-body hover:bg-surface-2">
+            {t("New plan")}
+          </Link>
+        </div>
+        {plans.isPending && <Card className="h-18 p-4"><Skeleton className="h-4 w-40" /></Card>}
+        {plans.isError && <Card><ErrorState message={t("Could not load plans.")} onRetry={() => plans.refetch()} /></Card>}
+        {plans.data && plans.data.length === 0 && (
+          <Card className="px-4 py-5 text-sm text-muted">{t("Nothing planned yet. Add a shopping list when you know what to buy.")}</Card>
+        )}
+        {plans.data && plans.data.length > 0 && (
+          <Card className="divide-y divide-line overflow-hidden">
+            {plans.data.map((plan) => (
+              <Link key={plan.id} to={`/teams/${team.id}/plans/${plan.id}`}
+                className={cx("block px-4 py-3.5 hover:bg-surface-2", ROW_PRESS)}>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="min-w-0 truncate font-medium text-body">{plan.title}</span>
+                  <Chip>{t("planned")}</Chip>
+                </div>
+                <p className="mt-1 truncate text-[13px] text-muted">
+                  {plan.items.map((item) => item.name).join(" · ")}
+                </p>
+              </Link>
+            ))}
+          </Card>
+        )}
+      </section>
       <Input
         type="search"
         value={search}

@@ -254,6 +254,27 @@ class ExpenseListOut(BaseModel):
     total_count: int
 
 
+# --------------------------------------------------------------- planned expenses
+
+
+class PlannedItemIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    total: int | None = Field(default=None, ge=0)
+
+
+class PlannedExpenseIn(BaseModel):
+    title: str = Field(min_length=1, max_length=160)
+    note: str = Field(default="", max_length=2000)
+    category_id: uuid.UUID | None = None
+    items: list[PlannedItemIn] = Field(min_length=1)
+
+
+class PlannedExpenseOut(PlannedExpenseIn):
+    id: uuid.UUID
+    team_id: uuid.UUID
+    created_at: datetime
+
+
 # ----------------------------------------------------------------------- balances
 
 
