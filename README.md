@@ -5,7 +5,7 @@ gets wrong: **you can split a shop receipt line by line.** One person pays at
 the till, then the chicken goes to the two people who eat chicken and the
 napkins go to everyone.
 
-Photograph the receipt, and Claude reads it into editable line items.
+Photograph the receipt, and a vision model reads it into editable line items.
 
 ---
 
@@ -15,9 +15,10 @@ Photograph the receipt, and Claude reads it into editable line items.
 - **Balances** — who is up, who is down, and the shortest set of payments that
   clears everything. Mark a payment as made and it settles.
 - **Line-by-line expenses** — enter each item and its price, or read the lines from a photographed receipt. Choose who shares each line. Existing total-split expenses open as a single editable line.
-- **Receipt scanning** — one or more photos go to Claude, which returns
-  structured line items. Everyone is on every line by default; tap a name off a
-  line and they stop paying towards it.
+- **Receipt scanning** — one or more photos go to Polza, which returns
+  structured line items. Photos and scan results are not stored by the app;
+  only the lines you save as an expense persist. Everyone is on every line by
+  default; tap a name off a line and they stop paying towards it.
 - **Planned purchases** — keep a shopping list with optional prices. Finish the
   purchase through the expense form; plans do not affect balances.
 - **Categories** and a spending breakdown.
@@ -30,7 +31,7 @@ Photograph the receipt, and Claude reads it into editable line items.
 | Backend | FastAPI, SQLAlchemy 2, Alembic, SQLite |
 | Frontend | React 19, Vite, TypeScript, Tailwind v4 |
 | Auth | JWT access/refresh, Argon2 password hashing |
-| Receipt parsing | `claude-agent-sdk` with structured output, or the Messages API |
+| Receipt parsing | Polza OpenAI-compatible vision API (`qwen/qwen3.5-9b` by default) |
 | Deploy | systemd + nginx, GitHub Actions |
 
 ### Money is never a float
@@ -52,7 +53,7 @@ Needs Python 3.13, Node 22 and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync --all-extras
-cp .env.example .env          # the defaults are fine for local work
+cp .env.example .env          # then set POLZA_API_KEY for receipt scanning
 uv run alembic upgrade head
 uv run uvicorn tricount_but_better.main:app --reload
 ```
@@ -73,16 +74,20 @@ uv run python scripts/seed_demo.py
 
 ### Receipt scanning locally
 
-The parser authenticates with `CLAUDE_CODE_OAUTH_TOKEN`. For local work you can
-instead borrow whatever the Claude Code CLI is already logged in as:
+The parser sends receipt photos to Polza's vision API. Set your API key in the
+ignored `.env` file:
 
 ```bash
 # .env
-CLAUDE_USE_AMBIENT_LOGIN=true
+VLM_PROVIDER=polza
+VLM_MODEL=qwen/qwen3.5-9b
+POLZA_API_KEY=pza_...
 ```
 
-That flag is deliberately off by default — a server should fail loudly rather
-than run on some operator's personal credentials.
+The key stays on the backend; the browser never receives it. On a computer,
+use **Upload photos**. On a phone, use **Take a photo** or **Choose from gallery**.
+You can add lines by hand first, then use **Add from receipt** to append scanned
+lines to the same expense.
 
 Check the whole path, including proxy settings, without touching the UI:
 
@@ -121,9 +126,9 @@ src/tricount_but_better/
 ├── balances.py     net positions and debt simplification
 ├── services.py     keeps sum(shares) == total on every write
 ├── models.py       SQLAlchemy schema
-├── images.py       upload validation, EXIF stripping, re-encoding
+├── images.py       in-memory validation, EXIF stripping, re-encoding
 ├── routers/        auth, teams, invites, categories, expenses, plans, receipts
-└── vlm/            the receipt parser — schema, prompt, two providers
+└── vlm/            the receipt parser — schema, prompt, Polza provider
 frontend/src/
 ├── lib/            API client, money formatting (mirrors money.py)
 ├── components/     UI primitives, charts, team tabs, receipt scanner

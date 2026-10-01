@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from pathlib import Path
 from typing import Annotated, Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-VlmProvider = Literal["agent_sdk", "messages_api", "disabled"]
+VlmProvider = Literal["polza", "disabled"]
 
 
 class Settings(BaseSettings):
@@ -18,7 +17,7 @@ class Settings(BaseSettings):
     # --- core ---
     app_name: str = "Tricount but better"
     environment: Literal["dev", "test", "prod"] = "dev"
-    # A single file, kept next to the uploads. Point at Postgres instead by
+    # A single file. Point at Postgres instead by
     # setting DATABASE_URL and installing the "postgres" extra.
     database_url: str = "sqlite:///var/tricount.db"
 
@@ -36,33 +35,16 @@ class Settings(BaseSettings):
     )
     default_currency: str = "RUB"
 
-    # --- uploads ---
-    upload_dir: Path = Path("var/uploads")
+    # --- photo limits ---
     max_upload_mb: int = 12
     max_receipt_images: int = 8
 
     # --- VLM ---
-    # agent_sdk   -> claude-agent-sdk, authenticates with CLAUDE_CODE_OAUTH_TOKEN
-    # messages_api-> anthropic SDK, authenticates with ANTHROPIC_API_KEY
-    vlm_provider: VlmProvider = "agent_sdk"
-    vlm_model: str = "claude-sonnet-5"
+    # polza -> OpenAI-compatible Polza API, authenticates with POLZA_API_KEY
+    vlm_provider: VlmProvider = "polza"
+    vlm_model: str = "qwen/qwen3.5-9b"
     vlm_timeout_seconds: int = 180
-    vlm_max_cost_usd: float = 0.50
-
-    claude_code_oauth_token: str | None = None
-    # Local development convenience: fall back to whatever the Claude Code CLI
-    # is already logged in as. Leave false on a server -- a deployment should
-    # fail loudly rather than run on some operator's personal credentials.
-    claude_use_ambient_login: bool = False
-    claude_cli_path: str | None = None
-    anthropic_api_key: str | None = None
-
-    # --- model-provider egress ---
-    # Claude Code supports HTTP(S) proxies, not SOCKS. The Messages API client
-    # can use SOCKS when the optional Python extra is installed.
-    # A proxy does not change Anthropic's supported-region requirements.
-    anthropic_proxy_url: str | None = None
-    anthropic_base_url: str | None = None
+    polza_api_key: str | None = None
 
     @field_validator("cors_origins", mode="before")
     @classmethod

@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 """Smoke-test the configured receipt parser.
 
-Run this on the server after deploying, or after changing the proxy settings:
-it exercises exactly the code path the API uses, including egress routing.
+Run this on the server after deploying. It exercises the Polza provider.
 
     uv run python scripts/check_vlm.py                 # synthetic receipt
     uv run python scripts/check_vlm.py photo1.jpg ...  # your own photos
@@ -11,8 +10,8 @@ it exercises exactly the code path the API uses, including egress routing.
 from __future__ import annotations
 
 import asyncio
+import io
 import sys
-import tempfile
 from pathlib import Path
 
 from tricount_but_better.config import get_settings
@@ -26,7 +25,7 @@ SYNTHETIC_LINES = [
 ]
 
 
-def _synthetic_receipt(directory: Path) -> Path:
+def _synthetic_receipt() -> bytes:
     """Draw a plain receipt so the check needs no fixture files."""
     from PIL import Image, ImageDraw
 
@@ -47,53 +46,40 @@ def _synthetic_receipt(directory: Path) -> Path:
     draw.text((40, y + 30), "TOTAL", fill="black")
     draw.text((width - 110, y + 30), "689.72", fill="black")
 
-    path = directory / "page-00-synthetic.jpg"
-    image.save(path, format="JPEG", quality=95)
-    return path
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG", quality=95)
+    return buffer.getvalue()
 
 
 async def main() -> int:
     settings = get_settings()
     print(f"provider   : {settings.vlm_provider}")
     print(f"model      : {settings.vlm_model}")
-    print(f"base url   : {settings.anthropic_base_url or '(direct)'}")
-    print(f"proxy      : {settings.anthropic_proxy_url or '(none)'}")
-    print(
-        "credential : "
-        + (
-            "CLAUDE_CODE_OAUTH_TOKEN"
-            if settings.claude_code_oauth_token
-            else "ANTHROPIC_API_KEY"
-            if settings.anthropic_api_key
-            else "(none found -- relying on the CLI's own login)"
-        )
-    )
+    print("base url   : https://polza.ai/api/v1")
+    credential = "POLZA_API_KEY" if settings.polza_api_key else "(none found)"
+    print(f"credential : {credential}")
     print()
 
-    with tempfile.TemporaryDirectory(prefix="vlm-check-") as tmp:
-        directory = Path(tmp)
-        if len(sys.argv) > 1:
-            paths = []
-            for index, raw in enumerate(sys.argv[1:]):
-                source = Path(raw)
-                if not source.exists():
-                    print(f"no such file: {source}")
-                    return 2
-                target = directory / f"page-{index:02d}{source.suffix}"
-                target.write_bytes(source.read_bytes())
-                paths.append(target)
-        else:
-            print("no images given -- using a synthetic receipt\n")
-            paths = [_synthetic_receipt(directory)]
+    if len(sys.argv) > 1:
+        images = []
+        for raw in sys.argv[1:]:
+            source = Path(raw)
+            if not source.exists():
+                print(f"no such file: {source}")
+                return 2
+            images.append(source.read_bytes())
+    else:
+        print("no images given -- using a synthetic receipt\n")
+        images = [_synthetic_receipt()]
 
-        try:
-            result = await get_parser(settings).parse(paths)
-        except VlmUnavailable as exc:
-            print(f"UNAVAILABLE: {exc}")
-            return 3
-        except VlmError as exc:
-            print(f"FAILED: {exc}")
-            return 1
+    try:
+        result = await get_parser(settings).parse(images)
+    except VlmUnavailable as exc:
+        print(f"UNAVAILABLE: {exc}")
+        return 3
+    except VlmError as exc:
+        print(f"FAILED: {exc}")
+        return 1
 
     receipt = result.receipt
     print(f"merchant   : {receipt.merchant}")

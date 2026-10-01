@@ -1,7 +1,6 @@
 """The extraction prompt.
 
-Kept in its own module so it can be tuned without touching transport code, and
-so both providers send byte-identical instructions.
+Kept in its own module so it can be tuned without touching transport code.
 """
 
 SYSTEM_PROMPT = """\
@@ -16,20 +15,13 @@ Rules:
   line-level discount that is printed against it.
 - Weighted goods: put the weight in `quantity` and the price per unit in
   `unit_price` ("0.482" kg at "899.00").
+- Do not infer a missing quantity or unit price from the line total. Use null
+  unless the value is printed.
 - Skip non-product lines entirely: subtotals, change, loyalty points, VAT
   summaries, card footers, "thank you" text.
 - If several images are given, they are pages of ONE receipt, in order. Merge
   them into a single item list and do not repeat lines that span a page break.
 - If a value is unreadable, use null rather than a guess, and say what was
-  unreadable in `notes`.
+  unreadable in `notes`. Do not add commentary about dates or inferred values.
 
 Return only the structured object. No commentary."""
-
-
-def user_prompt(filenames: list[str]) -> str:
-    listing = "\n".join(f"- {name}" for name in filenames)
-    return (
-        "Read every image file below from the current directory, then extract the "
-        f"receipt into the required structure.\n\n{listing}\n\n"
-        "Read all of them before answering."
-    )

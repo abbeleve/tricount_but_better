@@ -13,8 +13,7 @@ WorkingDirectory=/opt/tricount/app
 # Secrets and configuration. Not in git; see deploy/README.md.
 EnvironmentFile=/opt/tricount/.env
 
-# The Claude Code CLI (used by the receipt parser) needs a writable HOME for
-# its own config and session files.
+# Writable HOME for the service process.
 Environment=HOME=/opt/tricount/home
 Environment=PATH=/opt/tricount/app/.venv/bin:/usr/local/bin:/usr/bin:/bin
 

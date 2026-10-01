@@ -3,15 +3,11 @@
 from __future__ import annotations
 
 import os
-import tempfile
-from pathlib import Path
 
-_TMP = Path(tempfile.mkdtemp(prefix="tricount-test-"))
 # Must be set before the application package is imported: db.py builds its
 # engine from settings at import time.
 os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("JWT_SECRET", "test-secret-not-used-anywhere-real")
-os.environ.setdefault("UPLOAD_DIR", str(_TMP / "uploads"))
 os.environ.setdefault("VLM_PROVIDER", "disabled")
 
 import pytest  # noqa: E402

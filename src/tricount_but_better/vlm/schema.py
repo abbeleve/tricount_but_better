@@ -8,7 +8,7 @@ corrupt prices before they ever reached ``money.to_minor``.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
 from pydantic import BaseModel, Field, field_validator
@@ -16,7 +16,16 @@ from pydantic import BaseModel, Field, field_validator
 RECEIPT_JSON_SCHEMA: dict = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["items"],
+    "required": [
+        "merchant",
+        "purchased_at",
+        "currency",
+        "items",
+        "subtotal",
+        "discount",
+        "total",
+        "notes",
+    ],
     "properties": {
         "merchant": {
             "type": ["string", "null"],
@@ -36,7 +45,7 @@ RECEIPT_JSON_SCHEMA: dict = {
             "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["name", "total"],
+                "required": ["name", "quantity", "unit_price", "total"],
                 "properties": {
                     "name": {
                         "type": "string",
@@ -121,6 +130,13 @@ class ParsedReceipt(BaseModel):
         # A model that cannot read the date should not sink the whole parse.
         if v in (None, "", "null"):
             return None
+        if isinstance(v, datetime):
+            return v.date()
+        if isinstance(v, str) and ("T" in v or " " in v):
+            try:
+                return datetime.fromisoformat(v.replace("Z", "+00:00")).date()
+            except ValueError:
+                pass
         return v
 
     @field_validator("currency", mode="before")

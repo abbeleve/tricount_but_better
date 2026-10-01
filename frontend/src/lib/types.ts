@@ -3,7 +3,6 @@
 export type TeamRole = "owner" | "member";
 export type SplitMode = "total" | "items";
 export type ExpenseSource = "manual" | "receipt";
-export type ReceiptStatus = "pending" | "processing" | "parsed" | "failed";
 
 export interface User {
   id: string;
@@ -165,10 +164,7 @@ export interface ParsedReceiptItem {
   total: number;
 }
 
-export interface Receipt {
-  id: string;
-  status: ReceiptStatus;
-  error: string | null;
+export interface ReceiptScan {
   merchant: string | null;
   purchased_at: string | null;
   currency: string | null;

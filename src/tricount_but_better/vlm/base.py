@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
-from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from .schema import ParsedReceipt
@@ -27,4 +26,4 @@ class ParseResult:
 
 @runtime_checkable
 class ReceiptParser(Protocol):
-    async def parse(self, image_paths: list[Path]) -> ParseResult: ...
+    async def parse(self, images: list[bytes]) -> ParseResult: ...

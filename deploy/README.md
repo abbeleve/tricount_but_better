@@ -10,9 +10,9 @@ database as a single SQLite file.
 ├── web/          the built frontend (rsynced by CI)
 ├── var/
 │   ├── tricount.db     the database
-│   └── uploads/        receipt photos
+│   └── uploads/        legacy photos from earlier deployments, if any
 ├── backups/      nightly + pre-deploy snapshots
-├── home/         HOME for the Claude Code CLI
+├── home/         writable HOME for the service
 └── .env          secrets — never in git, never touched by a deploy
 ```
 
@@ -51,31 +51,29 @@ sudo certbot --nginx -d tricount-194-87-111-40.sslip.io
 ```
 
 Open ports 80 and 443 in the server firewall. Keep port 8010 private.
-The script installs nginx, Certbot, Node, the Claude Code CLI, and `uv`,
+The script installs nginx, Certbot, and `uv`,
 creates the users, generates a JWT secret, installs the systemd unit and nginx
-site, and adds a nightly backup. Receipt scanning starts disabled. Configure a
-provider and its credentials only after checking availability for your deployment.
+site, and adds a nightly backup. Receipt scanning starts disabled until the
+Polza API key is configured on the server.
 
 ---
 
-## 2. Receipt scanning and provider availability
+## 2. Receipt scanning through Polza
 
-The upload, parsing, and editable expense form are already implemented. Set
-`VLM_PROVIDER=disabled` until the chosen model provider is available for your
-deployment and users. Anthropic's [Supported Regions Policy](https://www.anthropic.com/supported-countries)
-does not list Russia. Routing a Russian VPS through a VPN or relay does not
-itself make a deployment eligible for Claude. For a service operating in
-Russia, use a provider available there or add a local OCR parser behind
-`src/tricount_but_better/vlm/base.py`.
+Edit `/opt/tricount/.env` on the server and set:
 
-For an eligible Claude deployment that needs a corporate network proxy, this
-app accepts `ANTHROPIC_PROXY_URL=http://proxy-host:port`. It passes the setting
-to Claude Code as `HTTPS_PROXY`/`HTTP_PROXY` and to the Messages API client.
-Anthropic's [Claude Code proxy documentation](https://docs.anthropic.com/en/docs/claude-code/corporate-proxy)
-supports HTTP(S) proxies, but explicitly says the CLI does **not** support
-SOCKS proxies. The `socks` Python extra applies only to the Messages API
-client. Leave the proxy unset when direct egress is available.
-`ANTHROPIC_BASE_URL` is available for an approved Anthropic-compatible gateway.
+```dotenv
+VLM_PROVIDER=polza
+VLM_MODEL=qwen/qwen3.5-9b
+POLZA_API_KEY=pza_...
+```
+
+The backend sends the photos directly to
+`https://polza.ai/api/v1/chat/completions`. The key stays in the server's
+`.env` file and is never sent to the frontend. The app processes new photos in
+memory and does not store photos or scan results. Existing data from older
+deployments is left untouched. Restart the service after
+changing this file: `sudo systemctl restart tricount`.
 
 ### Check the configured provider
 
@@ -84,7 +82,7 @@ sudo -u tricount env HOME=/opt/tricount/home \
   /opt/tricount/app/.venv/bin/python /opt/tricount/app/scripts/check_vlm.py
 ```
 
-It prints the resolved provider, model, proxy and credential, then parses a
+It prints the resolved provider, model and credential name, then parses a
 synthetic receipt. If that prints line items, the whole path works.
 
 ---
@@ -152,8 +150,8 @@ When the Deploy workflow succeeds, check
 The GitHub runner checks the server's host key on every connection. The
 private key stays in GitHub Actions secrets; never commit it.
 
-The `CLAUDE_CODE_OAUTH_TOKEN` is kept in `/opt/tricount/.env` on the server,
-and deploys never rewrite it.
+The `POLZA_API_KEY` is kept in `/opt/tricount/.env` on the server, and deploys
+never rewrite it.
 
 ---
 

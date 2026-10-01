@@ -355,3 +355,13 @@ class ReceiptOut(BaseModel):
     parsed_total: int | None = None
     items_total: int = 0
     notes: str | None = None
+
+
+class ReceiptScanOut(BaseModel):
+    merchant: str | None = None
+    purchased_at: date | None = None
+    currency: str | None = None
+    items: list[ParsedItemOut]
+    parsed_total: int | None = None
+    items_total: int
+    notes: str | None = None

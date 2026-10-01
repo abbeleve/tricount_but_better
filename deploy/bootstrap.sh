@@ -31,17 +31,11 @@ apt-get update -qq
 apt-get install -y --no-install-recommends \
   ca-certificates curl git rsync nginx sqlite3 python3 sudo certbot python3-certbot-nginx
 
-say "Installing Node (for the Claude Code CLI)"
-if ! command -v node >/dev/null; then
-  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-  apt-get install -y nodejs
-fi
-
 say "Creating users and directories"
 id -u "$SERVICE_USER" >/dev/null 2>&1 || useradd --system --create-home --shell /usr/sbin/nologin "$SERVICE_USER"
 id -u "$DEPLOY_USER"  >/dev/null 2>&1 || useradd --create-home --shell /bin/bash "$DEPLOY_USER"
 
-mkdir -p "$ROOT"/{app,web,var/uploads,home,backups}
+mkdir -p "$ROOT"/{app,web,var,home,backups}
 chown root:root "$ROOT"
 chmod 755 "$ROOT"
 # The deploy user writes code; the service user writes data.
@@ -55,11 +49,6 @@ sudo -u "$DEPLOY_USER" -H bash -c '
   command -v ~/.local/bin/uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh
 '
 
-say "Installing the Claude Code CLI"
-npm install -g @anthropic-ai/claude-code >/dev/null
-CLAUDE_BIN=$(command -v claude || echo /usr/bin/claude)
-echo "    claude -> $CLAUDE_BIN"
-
 say "Writing $ROOT/.env (only if absent)"
 if [ ! -f "$ROOT/.env" ]; then
   SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')
@@ -69,16 +58,9 @@ DATABASE_URL=sqlite:///$ROOT/var/tricount.db
 JWT_SECRET=$SECRET
 CORS_ORIGINS=https://tricount-194-87-111-40.sslip.io
 DEFAULT_CURRENCY=RUB
-UPLOAD_DIR=$ROOT/var/uploads
-
 VLM_PROVIDER=disabled
-VLM_MODEL=claude-sonnet-5
-CLAUDE_CODE_OAUTH_TOKEN=
-CLAUDE_CLI_PATH=$CLAUDE_BIN
-
-# For eligible Claude deployments with a corporate HTTP(S) proxy only.
-# Check provider availability in deploy/README.md first.
-# ANTHROPIC_PROXY_URL=http://proxy-host:8080
+VLM_MODEL=qwen/qwen3.5-9b
+POLZA_API_KEY=
 ENVEOF
   echo "    generated a JWT secret; receipt scanning is disabled until configured"
 else
@@ -124,9 +106,8 @@ cat <<DONE
 Done. Remaining manual steps:
 
   1. Optional: configure receipt scanning in $ROOT/.env
-       - VLM_PROVIDER=agent_sdk
-       - CLAUDE_CODE_OAUTH_TOKEN=<your token>
-       - an egress route, if this host cannot reach api.anthropic.com
+       - VLM_PROVIDER=polza
+       - POLZA_API_KEY=<your key>
 
   2. Check that tricount-194-87-111-40.sslip.io resolves to this server,
      then run:

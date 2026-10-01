@@ -31,7 +31,7 @@ import { ApiError, api } from "../lib/api";
 import { todayLocal } from "../lib/dates";
 import { previewEqualSplit, toMajorString, toMinor } from "../lib/money";
 import { useI18n } from "../lib/i18n";
-import type { Expense, Member, ParsedReceiptItem, Receipt } from "../lib/types";
+import type { Expense, Member, ParsedReceiptItem, ReceiptScan } from "../lib/types";
 
 interface ItemDraft {
   key: string;
@@ -39,6 +39,8 @@ interface ItemDraft {
   amount: string;
   userIds: string[];
   weights?: Record<string, string>;
+  quantity?: string;
+  unitPrice?: number;
 }
 
 let counter = 0;
@@ -115,7 +117,6 @@ export default function ExpenseForm() {
   const [loaded, setLoaded] = useState(false);
   const [planLoaded, setPlanLoaded] = useState(false);
   const [scanning, setScanning] = useState(false);
-  const [receiptId, setReceiptId] = useState<string | null>(null);
 
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
@@ -127,6 +128,12 @@ export default function ExpenseForm() {
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const [revealLines, setRevealLines] = useState(0);
   const splitRef = useRef<HTMLDivElement>(null);
+  const scannerRef = useRef<HTMLDivElement>(null);
+  const spentAtTouched = useRef(false);
+
+  useEffect(() => {
+    if (scanning) scannerRef.current?.scrollIntoView({ block: "start" });
+  }, [scanning]);
 
   // After a scan the lines are the thing to check, so bring them into view.
   useEffect(() => {
@@ -150,7 +157,6 @@ export default function ExpenseForm() {
     setPayerId(e.payer_id);
     setSpentAt(e.spent_at);
     setCategoryId(e.category_id ?? "");
-    setReceiptId(e.receipt_id);
     setItems(e.split_mode === "total"
       ? [{
           key: nextKey(),
@@ -166,6 +172,8 @@ export default function ExpenseForm() {
           amount: toMajorString(item.total, e.currency),
           userIds: item.shares.map((share) => share.user_id),
           weights: Object.fromEntries(item.shares.map((share) => [share.user_id, share.weight ?? "1"])),
+          quantity: item.quantity,
+          unitPrice: item.unit_price,
         })));
   }
 
@@ -212,10 +220,11 @@ export default function ExpenseForm() {
       const body = {
         ...base,
         split_mode: "items",
-        receipt_id: receiptId,
         items: items.map((item) => ({
           name: item.name.trim(),
           total: toMinor(item.amount, currency) ?? 0,
+          quantity: item.quantity,
+          unit_price: item.unitPrice,
           shares: item.userIds.map((id) => ({ user_id: id, weight: item.weights?.[id] ?? "1" })),
         })),
       };
@@ -271,21 +280,21 @@ export default function ExpenseForm() {
   const updateItem = (key: string, patch: Partial<ItemDraft>) =>
     setItems((list) => list.map((i) => (i.key === key ? { ...i, ...patch, ...(patch.userIds ? { weights: undefined } : {}) } : i)));
 
-  function applyParsed(receipt: Receipt, parsed: ParsedReceiptItem[]) {
-    setReceiptId(receipt.id);
+  function applyParsed(receipt: ReceiptScan, parsed: ParsedReceiptItem[]) {
     setScanning(false);
     if (receipt.merchant && !title) setTitle(receipt.merchant);
-    if (receipt.purchased_at) setSpentAt(receipt.purchased_at);
+    if (!editing && !spentAtTouched.current && receipt.purchased_at)
+      setSpentAt(receipt.purchased_at);
     // Default: everyone is on every line. Deselecting is the quick edit.
     const everyone = members.map((m) => m.user_id);
-    setItems(
-      parsed.map((item) => ({
+    setItems((list) => [...list, ...parsed.map((item) => ({
         key: nextKey(),
         name: item.name,
         amount: toMajorString(item.total, currency),
         userIds: everyone,
-      })),
-    );
+        quantity: item.quantity ?? undefined,
+        unitPrice: item.unit_price ?? undefined,
+    }))]);
     setRevealLines((n) => n + 1);
   }
 
@@ -316,7 +325,7 @@ export default function ExpenseForm() {
             full
             className="sm:w-auto"
             loading={save.isPending}
-            disabled={!valid}
+            disabled={!valid || scanning}
           >
             {t(editing ? "Save changes" : planId ? "Record purchase" : "Add expense")}
           </Button>
@@ -338,12 +347,17 @@ export default function ExpenseForm() {
         subtitle={planId ? t("Fill in the prices and choose who shares each item.") : undefined} />
 
       {scanning ? (
-        <div className="mb-4">
-          <ReceiptScanner teamId={teamId} onParsed={applyParsed} onCancel={() => setScanning(false)} />
+        <div ref={scannerRef} className="mb-4 scroll-mt-[calc(var(--header-h)+env(safe-area-inset-top)+1rem)]">
+          <ReceiptScanner
+            teamId={teamId}
+            appendToExisting={items.length > 0}
+            onParsed={applyParsed}
+            onCancel={() => setScanning(false)}
+          />
         </div>
       ) : (
         canScan &&
-        !editing && (
+        !editing && !started && (
           /* On a phone the camera is right there, so the scan is the headline way in. */
           <button
             type="button"
@@ -401,7 +415,10 @@ export default function ExpenseForm() {
             </Field>
             <Field label={t("When?")}>
               {(id) => (
-                <Input id={id} type="date" value={spentAt} onChange={(e) => setSpentAt(e.target.value)} />
+                <Input id={id} type="date" value={spentAt} onChange={(e) => {
+                  spentAtTouched.current = true;
+                  setSpentAt(e.target.value);
+                }} />
               )}
             </Field>
           </div>
@@ -413,14 +430,6 @@ export default function ExpenseForm() {
           className="scroll-mt-[calc(var(--header-h)+env(safe-area-inset-top)+1rem)]"
         >
           <Card className="flex flex-col gap-4 p-4 sm:p-5">
-            {canScan && editing && !scanning && (
-              <div>
-                <Button type="button" variant="secondary" size="sm" onClick={() => setScanning(true)}>
-                  <CameraIcon />
-                  {t("Scan a receipt")}
-                </Button>
-              </div>
-            )}
             <p className="text-[13px] text-muted">
               {t("Each line is split equally between the people highlighted on it. Turn someone off a line and they pay nothing towards it.")}
             </p>
@@ -495,12 +504,20 @@ export default function ExpenseForm() {
             </ul>
 
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <Button type="button" variant="secondary" size="sm" onClick={addLine}>
-                <svg viewBox="0 0 16 16" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                  <path d="M8 3v10M3 8h10" />
-                </svg>
-                {t("Add a line")}
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="secondary" size="sm" onClick={addLine}>
+                  <svg viewBox="0 0 16 16" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                    <path d="M8 3v10M3 8h10" />
+                  </svg>
+                  {t("Add a line")}
+                </Button>
+                {canScan && !scanning && (editing || started) && (
+                  <Button type="button" variant="secondary" size="sm" onClick={() => setScanning(true)}>
+                    <CameraIcon />
+                    {t("Add from receipt")}
+                  </Button>
+                )}
+              </div>
               <p className="text-sm text-muted">
                 {t("Total")} <Money minor={itemsTotal} currency={currency} className="font-medium" />
               </p>

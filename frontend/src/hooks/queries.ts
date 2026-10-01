@@ -10,7 +10,6 @@ import type {
   ExpenseList,
   Invite,
   PlannedExpense,
-  Receipt,
   ServerConfig,
   Settlement,
   TeamDetail,
@@ -31,7 +30,6 @@ export const keys = {
   plan: (id: string, pid: string) => ["team", id, "plan", pid] as const,
   settlements: (id: string) => ["team", id, "settlements"] as const,
   invites: (id: string) => ["team", id, "invites"] as const,
-  receipt: (id: string, rid: string) => ["team", id, "receipt", rid] as const,
 };
 
 export const useServerConfig = () =>
@@ -104,26 +102,6 @@ export const useInvites = (teamId: string) =>
   useQuery({
     queryKey: keys.invites(teamId),
     queryFn: () => api<Invite[]>(`/teams/${teamId}/invites`),
-  });
-
-/**
- * Polls a receipt until the model finishes. Parsing a multi-page receipt takes
- * far longer than a request should be held open, so upload returns immediately
- * and this watches for the result.
- */
-export const useReceipt = (teamId: string, receiptId: string | null) =>
-  useQuery({
-    queryKey: keys.receipt(teamId, receiptId ?? ""),
-    queryFn: () => api<Receipt>(`/teams/${teamId}/receipts/${receiptId}`),
-    enabled: Boolean(receiptId),
-    refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      return status === "pending" || status === "processing" ? 1500 : false;
-    },
-    // Keep polling while the tab is in the background. Photographing a receipt
-    // and then switching apps is the normal phone behaviour, and without this
-    // the poll pauses and the user comes back to a spinner that never resolved.
-    refetchIntervalInBackground: true,
   });
 
 /** Anything that changes money invalidates every derived view of this team. */

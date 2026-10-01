@@ -23,12 +23,8 @@ def get_parser(settings: Settings) -> ReceiptParser:
     Raises ``VlmUnavailable`` rather than returning a broken parser, so the
     route can answer with a clear 503 instead of failing mid-upload.
     """
-    if settings.vlm_provider == "agent_sdk":
-        from .agent_sdk import AgentSdkReceiptParser
+    if settings.vlm_provider == "polza":
+        from .polza import PolzaReceiptParser
 
-        return AgentSdkReceiptParser(settings)
-    if settings.vlm_provider == "messages_api":
-        from .messages_api import MessagesApiReceiptParser
-
-        return MessagesApiReceiptParser(settings)
+        return PolzaReceiptParser(settings)
     raise VlmUnavailable("receipt scanning is disabled on this server")

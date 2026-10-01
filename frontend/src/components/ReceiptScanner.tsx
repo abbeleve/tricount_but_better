@@ -1,14 +1,15 @@
 import { useMutation } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Button, Card, FormError, Skeleton, cx } from "./ui";
-import { useReceipt, useServerConfig } from "../hooks/queries";
+import { useServerConfig } from "../hooks/queries";
 import { ApiError, api } from "../lib/api";
 import { useI18n } from "../lib/i18n";
-import type { ParsedReceiptItem, Receipt } from "../lib/types";
+import type { ParsedReceiptItem, ReceiptScan } from "../lib/types";
 
 interface Props {
   teamId: string;
-  onParsed: (receipt: Receipt, items: ParsedReceiptItem[]) => void;
+  appendToExisting?: boolean;
+  onParsed: (receipt: ReceiptScan, items: ParsedReceiptItem[]) => void;
   onCancel: () => void;
 }
 
@@ -16,11 +17,6 @@ interface Shot {
   file: File;
   url: string;
 }
-
-const STATUS_COPY: Record<string, string> = {
-  pending: "Queued…",
-  processing: "Reading the receipt…",
-};
 
 const TILE = cx(
   "flex flex-col items-center justify-center gap-2 rounded-control px-4 py-6 text-center",
@@ -32,35 +28,31 @@ const TILE = cx(
  * shot per trip, so a long receipt needs several trips before anything is sent,
  * and a look at the thumbnails catches a blurred photo before the slow part.
  */
-export function ReceiptScanner({ teamId, onParsed, onCancel }: Props) {
+export function ReceiptScanner({ teamId, appendToExisting = false, onParsed, onCancel }: Props) {
   const { t } = useI18n();
   const config = useServerConfig();
   const cameraRef = useRef<HTMLInputElement>(null);
   const pickerRef = useRef<HTMLInputElement>(null);
   const [shots, setShots] = useState<Shot[]>([]);
-  const [receiptId, setReceiptId] = useState<string | null>(null);
-  const handled = useRef(false);
   const urls = useRef(new Set<string>());
   const max = config.data?.max_receipt_images ?? 8;
 
   const upload = useMutation({
-    mutationFn: (files: File[]) => {
-      const form = new FormData();
-      files.forEach((file) => form.append("files", file));
-      return api<Receipt>(`/teams/${teamId}/receipts`, { form });
+    mutationFn: async (files: File[]) => {
+      // Data URLs keep the transfer in memory; multipart UploadFile can spill
+      // to a temporary file for large phone photos.
+      const images = await Promise.all(files.map((file) => new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => typeof reader.result === "string"
+          ? resolve(reader.result)
+          : reject(new Error("Could not read this photo."));
+        reader.onerror = () => reject(new Error("Could not read this photo."));
+        reader.readAsDataURL(file);
+      })));
+      return api<ReceiptScan>(`/teams/${teamId}/receipts`, { body: { images } });
     },
-    onSuccess: (receipt) => setReceiptId(receipt.id),
+    onSuccess: (receipt) => onParsed(receipt, receipt.items),
   });
-
-  const receipt = useReceipt(teamId, receiptId);
-
-  // Hand the parsed lines up exactly once, then let the parent take over.
-  useEffect(() => {
-    if (receipt.data?.status === "parsed" && !handled.current) {
-      handled.current = true;
-      onParsed(receipt.data, receipt.data.items);
-    }
-  }, [receipt.data, onParsed]);
 
   // Object URLs pin the image in memory until revoked.
   useEffect(() => {
@@ -90,11 +82,8 @@ export function ReceiptScanner({ teamId, onParsed, onCancel }: Props) {
     (coarse ? cameraRef : pickerRef).current?.click();
   }
 
-  const working =
-    upload.isPending ||
-    receipt.data?.status === "pending" ||
-    receipt.data?.status === "processing";
-  const failed = receipt.data?.status === "failed";
+  const working = upload.isPending;
+  const failed = upload.isError;
 
   return (
     <Card className="p-4 sm:p-5">
@@ -106,14 +95,15 @@ export function ReceiptScanner({ teamId, onParsed, onCancel }: Props) {
       </div>
       <p className="mb-4 text-[13px] text-muted">
         {t("Photograph the whole receipt. A long one can take several photos — add them in order. Every line comes back editable, so you can fix anything the model misread.")}
+        {appendToExisting && <> {t("Scanned lines will be added to the ones already here.")}</>}
       </p>
 
       <FormError
         message={
           upload.error instanceof ApiError
-            ? upload.error.message
-            : failed
-              ? (receipt.data?.error ?? t("That receipt could not be read."))
+            ? t(upload.error.message)
+            : upload.error instanceof Error
+              ? t(upload.error.message)
               : null
         }
       />
@@ -196,7 +186,7 @@ export function ReceiptScanner({ teamId, onParsed, onCancel }: Props) {
       {working ? (
         <div className="flex flex-col gap-3" aria-live="polite">
           <p className="text-sm text-muted">
-            {t(STATUS_COPY[receipt.data?.status ?? "pending"] ?? "Uploading…")}
+            {t("Reading the receipt…")}
           </p>
           {/* The skeleton is shaped like the line list it will become. */}
           {[0, 1, 2, 3].map((i) => (
@@ -238,8 +228,8 @@ export function ReceiptScanner({ teamId, onParsed, onCancel }: Props) {
                 <path d="m20.5 16-4.5-4.5-8 8" />
               </svg>
               <span className="text-sm font-medium">
-                <span className="pointer-coarse:hidden">{t("Choose images")}</span>
-                <span className="hidden pointer-coarse:inline">{t("From photos")}</span>
+                <span className="pointer-coarse:hidden">{t("Upload photos")}</span>
+                <span className="hidden pointer-coarse:inline">{t("Choose from gallery")}</span>
               </span>
             </button>
           </div>

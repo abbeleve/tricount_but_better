@@ -1,7 +1,7 @@
-"""Safe intake for uploaded receipt photos.
+"""Safe, in-memory intake for receipt photos.
 
-Uploads are decoded, bounded, re-encoded, and stripped of metadata before they
-are written to disk or shown to a model. Re-encoding is the point: it drops EXIF
+Uploads are decoded, bounded, re-encoded, and stripped of metadata in memory
+before they are shown to a model. Re-encoding is the point: it drops EXIF
 (which carries GPS), and it means we never hand the model bytes we have not
 parsed ourselves.
 """
@@ -9,8 +9,6 @@ parsed ourselves.
 from __future__ import annotations
 
 import io
-import uuid
-from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
 
@@ -38,11 +36,8 @@ def _normalise(image: Image.Image) -> Image.Image:
     return image
 
 
-def store_upload(data: bytes, dest_dir: Path, index: int) -> tuple[Path, str, int]:
-    """Validate ``data`` and write a clean JPEG into ``dest_dir``.
-
-    Returns ``(path, media_type, size_bytes)``.
-    """
+def normalise_image(data: bytes) -> bytes:
+    """Validate an image and return clean JPEG bytes without writing a file."""
     if not data:
         raise ImageError("the uploaded file is empty")
 
@@ -63,9 +58,4 @@ def store_upload(data: bytes, dest_dir: Path, index: int) -> tuple[Path, str, in
     except OSError as exc:
         raise ImageError("that image could not be decoded") from exc
 
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    # Ordinal prefix: the model is told the pages are in order.
-    path = dest_dir / f"page-{index:02d}-{uuid.uuid4().hex[:8]}.jpg"
-    payload = buffer.getvalue()
-    path.write_bytes(payload)
-    return path, "image/jpeg", len(payload)
+    return buffer.getvalue()
