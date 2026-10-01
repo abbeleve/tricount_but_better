@@ -15,12 +15,13 @@
   values and nowhere else -- never on a button, a link, or a heading. Teal always
   means "is owed", orange always means "owes".
 
-  Deliberately NOT red/green: that pair measures a CVD separation of only 6.0
+  For balances, red/green is avoided: that pair measures a CVD separation of only 6.0
   (light) and 4.6 (dark) delta-E, below the safe floor. Teal #0d9488 against
   orange #ea580c clears every check of the palette validator in both themes.
   Colour still never travels alone -- balances carry a +/- sign, a worded label,
   and, in the balance meter, a position left or right of the centre line.
   Purple identifies spending history; dashed neutral lines show the previous period.
+  Spending increases use red and decreases use green, accompanied by arrows and words.
 
   SHAPE: exactly three radii. Cards 16px, controls 10px, chips fully round.
 */
@@ -48,6 +49,11 @@
   --negative: #c2410c;          /* text: 5.18:1 on white */
   --negative-mark: #ea580c;
   --negative-soft: #fff7ed;
+
+  --spending-up: #dc2626;
+  --spending-up-soft: #fef2f2;
+  --spending-down: #15803d;
+  --spending-down-soft: #f0fdf4;
 
   --chart-spending: #8b3db8;    /* period spending, distinct from balance direction */
   --chart-bar: #52525b;         /* single-series magnitude bars */
@@ -99,6 +105,11 @@
   --negative-mark: #ea580c;
   --negative-soft: #3a1c0a;
 
+  --spending-up: #f87171;
+  --spending-up-soft: #450a0a;
+  --spending-down: #4ade80;
+  --spending-down-soft: #052e16;
+
   --chart-spending: #bd7fe3;
   --chart-bar: #a1a1aa;
 
@@ -133,6 +144,10 @@
   --color-negative-soft: var(--negative-soft);
   --color-chart-bar: var(--chart-bar);
   --color-chart-spending: var(--chart-spending);
+  --color-spending-up: var(--spending-up);
+  --color-spending-up-soft: var(--spending-up-soft);
+  --color-spending-down: var(--spending-down);
+  --color-spending-down-soft: var(--spending-down-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
 

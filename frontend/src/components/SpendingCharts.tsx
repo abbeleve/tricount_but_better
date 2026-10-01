@@ -1,6 +1,7 @@
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { useI18n } from "../lib/i18n";
 import { exponentFor, formatMoney } from "../lib/money";
+import { smoothChartPath } from "../lib/chart-path";
 import { chartDomain, type SpendingBucket, type SpendingPeriod } from "../lib/spending";
 import { periodLabel, spendingDate } from "../lib/spending-format";
 import { cx } from "./ui";
@@ -46,8 +47,7 @@ export function SpendingComparisonChart({ current, previous, currency, period }:
   const y = (value: number) => bottom - (value - min) / (max - min) * (bottom - top);
   const points = (buckets: SpendingBucket[]) => buckets.flatMap((bucket, i) =>
     bucket.total === null ? [] : [{ x: x(i), y: y(bucket.total) }]);
-  const path = (buckets: SpendingBucket[]) => points(buckets)
-    .map((point, i) => `${i === 0 ? "M" : "L"}${point.x},${point.y}`).join(" ");
+  const path = (buckets: SpendingBucket[]) => smoothChartPath(points(buckets));
   const currentPoints = points(current);
   const area = currentPoints.length > 0
     ? `${path(current)} L${currentPoints[currentPoints.length - 1].x},${y(0)} L${currentPoints[0].x},${y(0)} Z`
@@ -88,8 +88,8 @@ export function SpendingComparisonChart({ current, previous, currency, period }:
           {min < 0 && <line x1={left} x2={right} y1={y(0)} y2={y(0)} stroke="var(--border-strong)" />}
           <path d={area} fill={`url(#${id}-fill)`} />
           <path d={area} fill={`url(#${id}-dots)`} />
-          <path d={path(previous)} fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeDasharray="5 5" strokeLinejoin="round" />
-          <path d={path(current)} fill="none" stroke="var(--chart-spending)" strokeWidth="2.5" strokeLinejoin="round" />
+          <path d={path(previous)} fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeDasharray="5 5" strokeLinejoin="round" strokeLinecap="round" />
+          <path d={path(current)} fill="none" stroke="var(--chart-spending)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
           {currentPoints.length === 1 && <circle cx={currentPoints[0].x} cy={currentPoints[0].y} r="4" fill="var(--chart-spending)" />}
           <line x1={x(selected)} x2={x(selected)} y1={top} y2={bottom} stroke="var(--border-strong)" strokeDasharray="3 4" />
           {a?.total !== null && a?.total !== undefined && <circle cx={x(selected)} cy={y(a.total)} r="4" fill="var(--chart-spending)" stroke="var(--surface)" strokeWidth="2" />}

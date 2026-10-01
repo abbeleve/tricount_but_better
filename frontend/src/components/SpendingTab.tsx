@@ -35,7 +35,12 @@ function Change({ current, previous }: { current: number; previous: number }) {
   const percent = change === null ? "" : new Intl.NumberFormat(language === "ru" ? "ru-RU" : "en-US", {
     maximumFractionDigits: 1,
   }).format(Math.abs(change));
-  return <span className="inline-flex items-center rounded-full bg-surface-2 px-2 py-1 text-[11px] font-medium text-muted">
+  const difference = current - previous;
+  return <span className={cx(
+    "inline-flex items-center rounded-full px-2 py-1 text-[11px] font-medium",
+    difference > 0 ? "bg-spending-up-soft text-spending-up"
+      : difference < 0 ? "bg-spending-down-soft text-spending-down" : "bg-surface-2 text-muted",
+  )}>
     {change === null ? t("No previous spending") : change === 0 ? t("No change")
       : t(change > 0 ? "↑ {percent}% more" : "↓ {percent}% less", { percent })}
   </span>;
