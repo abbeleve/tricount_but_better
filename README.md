@@ -79,7 +79,6 @@ ignored `.env` file:
 
 ```bash
 # .env
-VLM_PROVIDER=polza
 VLM_MODEL=qwen/qwen3.5-9b
 POLZA_API_KEY=pza_...
 ```

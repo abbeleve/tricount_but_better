@@ -98,6 +98,12 @@ export function ReceiptScanner({ teamId, appendToExisting = false, onParsed, onC
         {appendToExisting && <> {t("Scanned lines will be added to the ones already here.")}</>}
       </p>
 
+      {config.data?.receipt_scanning === false && (
+        <p role="status" className="rounded-control bg-surface-2 px-3 py-4 text-sm text-body">
+          {t("Receipt scanning is not configured on this server.")}
+        </p>
+      )}
+
       <FormError
         message={
           upload.error instanceof ApiError
@@ -108,6 +114,7 @@ export function ReceiptScanner({ teamId, appendToExisting = false, onParsed, onC
         }
       />
 
+      {config.data?.receipt_scanning !== false && <>
       {/* `capture` opens the camera directly but hides the library, so each gets its own input. */}
       <input
         ref={cameraRef}
@@ -182,7 +189,6 @@ export function ReceiptScanner({ teamId, appendToExisting = false, onParsed, onC
           )}
         </ul>
       )}
-
       {working ? (
         <div className="flex flex-col gap-3" aria-live="polite">
           <p className="text-sm text-muted">
@@ -238,6 +244,7 @@ export function ReceiptScanner({ teamId, appendToExisting = false, onParsed, onC
           </p>
         </>
       )}
+      </>}
     </Card>
   );
 }

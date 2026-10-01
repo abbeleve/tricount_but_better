@@ -304,7 +304,7 @@ export default function ExpenseForm() {
     setItems((list) => [...list, { key, name: "", amount: "", userIds: members.map((m) => m.user_id) }]);
   }
 
-  const canScan = Boolean(config.data?.receipt_scanning);
+  const scanUnavailable = config.data?.receipt_scanning === false;
   const started = Boolean(title.trim() || items.length);
   const cancel = () => navigate(back.to);
 
@@ -356,9 +356,7 @@ export default function ExpenseForm() {
           />
         </div>
       ) : (
-        canScan &&
-        !editing && !started && (
-          /* On a phone the camera is right there, so the scan is the headline way in. */
+          /* Keep the photo action visible even after the user has typed lines. */
           <button
             type="button"
             onClick={() => setScanning(true)}
@@ -371,16 +369,19 @@ export default function ExpenseForm() {
               <CameraIcon />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-sm font-medium text-body">{t("Scan a receipt")}</span>
+              <span className="block text-sm font-medium text-body">
+                {t(editing || started ? "Add from receipt" : "Scan a receipt")}
+              </span>
               <span className="block text-[13px] text-muted">
-                {t("Photograph it, then split it line by line.")}
+                {t(scanUnavailable
+                  ? "Receipt scanning is not configured on this server."
+                  : "Upload photos on a computer, or take a photo on your phone.")}
               </span>
             </span>
             <svg viewBox="0 0 16 16" className="size-4 shrink-0 text-subtle" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="m6 3 5 5-5 5" />
             </svg>
           </button>
-        )
       )}
 
       <form id="expense-form" onSubmit={submit} className="flex flex-col gap-4">
@@ -511,7 +512,7 @@ export default function ExpenseForm() {
                   </svg>
                   {t("Add a line")}
                 </Button>
-                {canScan && !scanning && (editing || started) && (
+                {!scanning && (editing || started) && (
                   <Button type="button" variant="secondary" size="sm" onClick={() => setScanning(true)}>
                     <CameraIcon />
                     {t("Add from receipt")}

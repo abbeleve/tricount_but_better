@@ -1,4 +1,4 @@
-"""Receipt parsing providers."""
+"""Receipt parsing through Polza."""
 
 from __future__ import annotations
 
@@ -18,13 +18,7 @@ __all__ = [
 
 
 def get_parser(settings: Settings) -> ReceiptParser:
-    """Build the configured provider.
+    """Build the Polza provider."""
+    from .polza import PolzaReceiptParser
 
-    Raises ``VlmUnavailable`` rather than returning a broken parser, so the
-    route can answer with a clear 503 instead of failing mid-upload.
-    """
-    if settings.vlm_provider == "polza":
-        from .polza import PolzaReceiptParser
-
-        return PolzaReceiptParser(settings)
-    raise VlmUnavailable("receipt scanning is disabled on this server")
+    return PolzaReceiptParser(settings)

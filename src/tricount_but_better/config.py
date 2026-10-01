@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated, Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
-
-VlmProvider = Literal["polza", "disabled"]
 
 
 class Settings(BaseSettings):
@@ -40,11 +39,12 @@ class Settings(BaseSettings):
     max_receipt_images: int = 8
 
     # --- VLM ---
-    # polza -> OpenAI-compatible Polza API, authenticates with POLZA_API_KEY
-    vlm_provider: VlmProvider = "polza"
+    # Polza OpenAI-compatible API. A separate key file supports deployments
+    # whose root-owned EnvironmentFile still contains the old disabled flag.
     vlm_model: str = "qwen/qwen3.5-9b"
     vlm_timeout_seconds: int = 180
     polza_api_key: str | None = None
+    polza_api_key_file: Path = Path(".secrets/polza_api_key")
 
     @field_validator("cors_origins", mode="before")
     @classmethod
@@ -56,6 +56,15 @@ class Settings(BaseSettings):
     @property
     def max_upload_bytes(self) -> int:
         return self.max_upload_mb * 1024 * 1024
+
+    @property
+    def effective_polza_api_key(self) -> str | None:
+        if self.polza_api_key:
+            return self.polza_api_key
+        try:
+            return self.polza_api_key_file.read_text(encoding="utf-8").strip() or None
+        except OSError:
+            return None
 
 
 @lru_cache

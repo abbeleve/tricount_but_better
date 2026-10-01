@@ -60,7 +60,7 @@ jobs:
           # the database and .env are siblings, never rsync targets.
           rsync -az --delete \
             -e "ssh -F $HOME/.ssh/config -p $PORT" \
-            --exclude '.venv' --exclude '__pycache__' \
+            --exclude '.venv' --exclude '.secrets' --exclude '__pycache__' \
             src migrations alembic.ini pyproject.toml uv.lock README.md scripts \
             "$USER@deploy-target:/opt/tricount/app/"
 

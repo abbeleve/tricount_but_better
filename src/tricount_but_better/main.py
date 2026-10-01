@@ -48,7 +48,7 @@ def create_app() -> FastAPI:
     def client_config() -> dict[str, object]:
         """Feature flags the frontend needs before it can render."""
         return {
-            "receipt_scanning": settings.vlm_provider != "disabled",
+            "receipt_scanning": bool(settings.effective_polza_api_key),
             "default_currency": settings.default_currency,
             "max_receipt_images": settings.max_receipt_images,
             "max_upload_mb": settings.max_upload_mb,

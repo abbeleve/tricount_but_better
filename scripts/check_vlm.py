@@ -53,10 +53,10 @@ def _synthetic_receipt() -> bytes:
 
 async def main() -> int:
     settings = get_settings()
-    print(f"provider   : {settings.vlm_provider}")
+    print("provider   : polza")
     print(f"model      : {settings.vlm_model}")
     print("base url   : https://polza.ai/api/v1")
-    credential = "POLZA_API_KEY" if settings.polza_api_key else "(none found)"
+    credential = "POLZA_API_KEY" if settings.effective_polza_api_key else "(none found)"
     print(f"credential : {credential}")
     print()
 

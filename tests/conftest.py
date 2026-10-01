@@ -8,7 +8,6 @@ import os
 # engine from settings at import time.
 os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("JWT_SECRET", "test-secret-not-used-anywhere-real")
-os.environ.setdefault("VLM_PROVIDER", "disabled")
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

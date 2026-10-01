@@ -175,6 +175,8 @@ const russian: Record<string, string> = {
   "names cannot be blank": "Укажите название плана и каждой позиции",
   "Scan a receipt": "Сканировать чек",
   "Add from receipt": "Добавить из чека",
+  "Upload photos on a computer, or take a photo on your phone.": "Загрузите фото на компьютере или сфотографируйте чек на телефоне.",
+  "Receipt scanning is not configured on this server.": "Распознавание чеков ещё не настроено на сервере.",
   "Scanned lines will be added to the ones already here.": "Позиции из чека добавятся к уже введённым.",
   "Upload photos": "Загрузить фото",
   "Choose from gallery": "Выбрать из галереи",

@@ -36,10 +36,12 @@ id -u "$SERVICE_USER" >/dev/null 2>&1 || useradd --system --create-home --shell 
 id -u "$DEPLOY_USER"  >/dev/null 2>&1 || useradd --create-home --shell /bin/bash "$DEPLOY_USER"
 
 mkdir -p "$ROOT"/{app,web,var,home,backups}
+mkdir -p "$ROOT/app/.secrets"
 chown root:root "$ROOT"
 chmod 755 "$ROOT"
 # The deploy user writes code; the service user writes data.
 chown -R "$DEPLOY_USER":"$SERVICE_USER" "$ROOT"/app "$ROOT"/web
+chmod 2750 "$ROOT/app/.secrets"
 chown -R "$SERVICE_USER":"$SERVICE_USER" "$ROOT"/{var,home,backups}
 chmod 2755 "$ROOT"/app "$ROOT"/web
 chmod 2770 "$ROOT"/var "$ROOT"/backups
@@ -58,11 +60,10 @@ DATABASE_URL=sqlite:///$ROOT/var/tricount.db
 JWT_SECRET=$SECRET
 CORS_ORIGINS=https://tricount-194-87-111-40.sslip.io
 DEFAULT_CURRENCY=RUB
-VLM_PROVIDER=disabled
 VLM_MODEL=qwen/qwen3.5-9b
 POLZA_API_KEY=
 ENVEOF
-  echo "    generated a JWT secret; receipt scanning is disabled until configured"
+  echo "    generated a JWT secret; set the Polza key to enable receipt scanning"
 else
   echo "    kept the existing .env"
 fi
@@ -105,8 +106,7 @@ cat <<DONE
 
 Done. Remaining manual steps:
 
-  1. Optional: configure receipt scanning in $ROOT/.env
-       - VLM_PROVIDER=polza
+  1. Configure receipt scanning in $ROOT/.env or app/.secrets/polza_api_key
        - POLZA_API_KEY=<your key>
 
   2. Check that tricount-194-87-111-40.sslip.io resolves to this server,

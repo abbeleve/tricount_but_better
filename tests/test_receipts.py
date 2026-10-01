@@ -20,10 +20,10 @@ from tricount_but_better.vlm.schema import ParsedItem, ParsedReceipt
 @pytest.fixture
 def scanning_enabled():
     settings = get_settings()
-    original = settings.vlm_provider
-    settings.vlm_provider = "polza"
+    original = settings.polza_api_key
+    settings.polza_api_key = "test-key"
     yield
-    settings.vlm_provider = original
+    settings.polza_api_key = original
 
 
 def _jpeg(color: tuple[int, int, int] = (240, 240, 240)) -> bytes:
@@ -134,9 +134,33 @@ def test_invalid_image_and_excess_pages_are_rejected(
     assert response.status_code == 422
 
 
-def test_scanning_can_be_disabled(client, team, alice) -> None:
-    response = _scan(client, team, alice, _jpeg())
-    assert response.status_code == 503
+def test_missing_key_is_reported(client, team, alice, tmp_path) -> None:
+    settings = get_settings()
+    original_key = settings.polza_api_key
+    original_file = settings.polza_api_key_file
+    try:
+        settings.polza_api_key = None
+        settings.polza_api_key_file = tmp_path / "missing-key"
+        response = _scan(client, team, alice, _jpeg())
+        assert response.status_code == 503
+    finally:
+        settings.polza_api_key = original_key
+        settings.polza_api_key_file = original_file
+
+
+def test_config_only_advertises_scanning_with_a_provider_key(client, tmp_path) -> None:
+    settings = get_settings()
+    original_key = settings.polza_api_key
+    original_file = settings.polza_api_key_file
+    try:
+        settings.polza_api_key = None
+        settings.polza_api_key_file = tmp_path / "missing-key"
+        assert client.get("/api/config").json()["receipt_scanning"] is False
+        settings.polza_api_key = "test-key"
+        assert client.get("/api/config").json()["receipt_scanning"] is True
+    finally:
+        settings.polza_api_key = original_key
+        settings.polza_api_key_file = original_file
 
 
 def test_outsider_cannot_scan(client, team, alice, scanning_enabled) -> None:

@@ -48,7 +48,7 @@ async def test_polza_receipt_request(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda **kwargs: client_type(transport=httpx.MockTransport(answer), **kwargs),
     )
 
-    parser = get_parser(Settings(vlm_provider="polza", polza_api_key="test-key"))
+    parser = get_parser(Settings(polza_api_key="test-key"))
     result = await parser.parse([first, second])
 
     assert result.receipt.merchant == "Shop"
@@ -79,9 +79,18 @@ async def test_polza_receipt_request(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.asyncio
 async def test_polza_requires_key() -> None:
-    parser = get_parser(Settings(vlm_provider="polza", polza_api_key=None))
+    parser = get_parser(Settings(polza_api_key=None))
     with pytest.raises(VlmUnavailable, match="POLZA_API_KEY"):
         await parser.parse([b"image"])
+
+
+def test_polza_key_file_works_with_legacy_disabled_flag(tmp_path, monkeypatch) -> None:
+    key_file = tmp_path / "polza_api_key"
+    key_file.write_text("test-key\n", encoding="utf-8")
+    monkeypatch.setenv("VLM_PROVIDER", "disabled")
+    settings = Settings(polza_api_key=None, polza_api_key_file=key_file)
+    assert settings.effective_polza_api_key == "test-key"
+    assert get_parser(settings).__class__.__name__ == "PolzaReceiptParser"
 
 
 @pytest.mark.asyncio
@@ -106,7 +115,7 @@ async def test_polza_errors_do_not_expose_response(
         ),
     )
 
-    parser = get_parser(Settings(vlm_provider="polza", polza_api_key="test-key"))
+    parser = get_parser(Settings(polza_api_key="test-key"))
     with pytest.raises(expected) as caught:
         await parser.parse([b"image"])
     assert "secret request contents" not in str(caught.value)

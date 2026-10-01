@@ -67,8 +67,6 @@ async def scan_receipt(
     team: TeamDep,
 ) -> ReceiptScanOut:
     settings = get_settings()
-    if settings.vlm_provider == "disabled":
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "receipt scanning is disabled")
     if len(payload.images) > settings.max_receipt_images:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT,

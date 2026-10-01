@@ -23,7 +23,8 @@ class PolzaReceiptParser:
     async def parse(self, images: list[bytes]) -> ParseResult:
         if not images:
             raise VlmError("no images to read")
-        if not self._settings.polza_api_key:
+        api_key = self._settings.effective_polza_api_key
+        if not api_key:
             raise VlmUnavailable("POLZA_API_KEY is not set")
 
         content: list[dict] = [
@@ -64,7 +65,7 @@ class PolzaReceiptParser:
             async with httpx.AsyncClient(timeout=self._settings.vlm_timeout_seconds) as client:
                 response = await client.post(
                     API_URL,
-                    headers={"Authorization": f"Bearer {self._settings.polza_api_key}"},
+                    headers={"Authorization": f"Bearer {api_key}"},
                     json=request,
                 )
         except httpx.TimeoutException as exc:

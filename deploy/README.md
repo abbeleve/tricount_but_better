@@ -6,7 +6,8 @@ database as a single SQLite file.
 ```
 /opt/tricount/
 ├── app/          code (rsynced by CI, read-only to the service)
-│   └── .venv/    built on the server by `uv sync`
+│   ├── .venv/    built on the server by `uv sync`
+│   └── .secrets/ private key file, kept during deploys
 ├── web/          the built frontend (rsynced by CI)
 ├── var/
 │   ├── tricount.db     the database
@@ -53,7 +54,7 @@ sudo certbot --nginx -d tricount-194-87-111-40.sslip.io
 Open ports 80 and 443 in the server firewall. Keep port 8010 private.
 The script installs nginx, Certbot, and `uv`,
 creates the users, generates a JWT secret, installs the systemd unit and nginx
-site, and adds a nightly backup. Receipt scanning starts disabled until the
+site, and adds a nightly backup. Receipt scanning becomes available when the
 Polza API key is configured on the server.
 
 ---
@@ -63,14 +64,15 @@ Polza API key is configured on the server.
 Edit `/opt/tricount/.env` on the server and set:
 
 ```dotenv
-VLM_PROVIDER=polza
 VLM_MODEL=qwen/qwen3.5-9b
 POLZA_API_KEY=pza_...
 ```
 
 The backend sends the photos directly to
 `https://polza.ai/api/v1/chat/completions`. The key stays in the server's
-`.env` file and is never sent to the frontend. The app processes new photos in
+`.env` file and is never sent to the frontend. Alternatively, store the key as
+the only line of `/opt/tricount/app/.secrets/polza_api_key`. This file is
+excluded from code sync. The app processes new photos in
 memory and does not store photos or scan results. Existing data from older
 deployments is left untouched. Restart the service after
 changing this file: `sudo systemctl restart tricount`.
@@ -150,8 +152,8 @@ When the Deploy workflow succeeds, check
 The GitHub runner checks the server's host key on every connection. The
 private key stays in GitHub Actions secrets; never commit it.
 
-The `POLZA_API_KEY` is kept in `/opt/tricount/.env` on the server, and deploys
-never rewrite it.
+The Polza key is kept in `/opt/tricount/.env` or the excluded `.secrets` file
+on the server; deploys never rewrite either.
 
 ---
 
@@ -171,13 +173,8 @@ sudo -u tricount sqlite3 /opt/tricount/var/tricount.db ".backup '/tmp/snap.db'"
 scp your-server:/tmp/snap.db .
 ```
 
-Turning receipt scanning off entirely — the button disappears from the UI and
-the endpoint returns 503:
-
-```bash
-# /opt/tricount/.env
-VLM_PROVIDER=disabled
-```
+If the Polza key is missing, the form explains that scanning is unavailable
+and the endpoint returns 503.
 
 ### Outgrowing SQLite
 
