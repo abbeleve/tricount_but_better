@@ -57,6 +57,21 @@ export const useCategories = (teamId: string) =>
     queryFn: () => api<Category[]>(`/teams/${teamId}/categories`),
   });
 
+export function useCreateCategory(teamId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { name: string; emoji: string }) =>
+      api<Category>(`/teams/${teamId}/categories`, { body }),
+    onSuccess: (category) => {
+      client.setQueryData<Category[]>(keys.categories(teamId), (current) =>
+        [...(current ?? []).filter((item) => item.id !== category.id), category]
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      );
+      client.invalidateQueries({ queryKey: keys.categories(teamId) });
+    },
+  });
+}
+
 export const useCategoryTotals = (teamId: string) =>
   useQuery({
     queryKey: keys.categoryTotals(teamId),

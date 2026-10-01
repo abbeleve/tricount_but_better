@@ -4,6 +4,7 @@ import { AppShell, PageTitle } from "../components/Layout";
 import { BalancesTab } from "../components/BalancesTab";
 import { ExpensesTab } from "../components/ExpensesTab";
 import { PeopleTab } from "../components/PeopleTab";
+import { CategoriesTab } from "../components/CategoriesTab";
 import { Card, ErrorState, PRESS, Skeleton, cx } from "../components/ui";
 import { useTeam } from "../hooks/queries";
 import { ApiError } from "../lib/api";
@@ -13,6 +14,7 @@ const TABS = [
   { id: "balances", label: "Balances" },
   { id: "expenses", label: "Expenses" },
   { id: "people", label: "People" },
+  { id: "categories", label: "Categories" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -48,7 +50,7 @@ function Tabs({ active, onSelect }: { active: TabId; onSelect: (id: TabId) => vo
         "border-b border-line",
       )}
     >
-      <div role="tablist" aria-label={t("Team sections")} className="relative flex sm:gap-1">
+      <div role="tablist" aria-label={t("Team sections")} className="relative flex overflow-x-auto sm:gap-1">
         {TABS.map((tab) => (
           <button
             key={tab.id}
@@ -59,7 +61,7 @@ function Tabs({ active, onSelect }: { active: TabId; onSelect: (id: TabId) => vo
             aria-selected={active === tab.id}
             onClick={() => onSelect(tab.id)}
             className={cx(
-              "h-11 flex-1 whitespace-nowrap px-3 text-sm transition-colors sm:flex-none",
+              "h-11 shrink-0 flex-1 whitespace-nowrap px-2 text-sm transition-colors sm:flex-none sm:px-3",
               "active:opacity-60 active:duration-0",
               active === tab.id ? "font-medium text-body" : "text-muted hover:text-body",
             )}
@@ -140,6 +142,7 @@ export default function TeamDetailPage() {
       {active === "balances" && <BalancesTab team={team.data} />}
       {active === "expenses" && <ExpensesTab team={team.data} />}
       {active === "people" && <PeopleTab team={team.data} />}
+      {active === "categories" && <CategoriesTab teamId={teamId} />}
 
       {/* Phone: the primary action stays reachable with a thumb, above the home indicator. */}
       <Link

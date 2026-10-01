@@ -21,7 +21,7 @@ Photograph the receipt, and a vision model reads it into editable line items.
   default; tap a name off a line and they stop paying towards it.
 - **Planned purchases** — keep a shopping list with optional prices. Finish the
   purchase through the expense form; plans do not affect balances.
-- **Categories** and a spending breakdown.
+- **Team categories** — any member can create shared categories from the Categories tab or while entering an expense or planned purchase, with an optional emoji and a spending breakdown.
 - Works on a phone and on a desktop; light and dark. English and Russian can be selected from the account menu (or on the sign-in screen). The home screen shows how much you owe across teams, separated by currency.
 
 ## How it is built

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppShell, PageTitle } from "../components/Layout";
 import { ReceiptScanner } from "../components/ReceiptScanner";
+import { CategoryPicker } from "../components/CategoryPicker";
 import {
   Button,
   Card,
@@ -18,7 +19,6 @@ import {
   cx,
 } from "../components/ui";
 import {
-  useCategories,
   useDeleteExpense,
   useExpense,
   usePlan,
@@ -103,7 +103,6 @@ export default function ExpenseForm() {
   const { user } = useAuth();
   const { t } = useI18n();
   const team = useTeam(teamId);
-  const categories = useCategories(teamId);
   const config = useServerConfig();
   const existing = useExpense(teamId, expenseId);
   const planned = usePlan(teamId, planId);
@@ -544,18 +543,12 @@ export default function ExpenseForm() {
         </div>
 
         <Card className="flex flex-col gap-4 p-4 sm:p-5">
-          <Field label={t("Category")} hint={t("Optional, but it makes the breakdown useful.")}>
-            {(id) => (
-              <Select id={id} value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-                <option value="">{t("No category")}</option>
-                {categories.data?.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.emoji} {c.name}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
+          <CategoryPicker
+            teamId={teamId}
+            value={categoryId}
+            onChange={setCategoryId}
+            hint={t("Optional, but it makes the breakdown useful.")}
+          />
           <Field label={t("Note")} hint={t("Anything worth remembering later.")}>
             {(id) => (
               <Textarea id={id} value={note} onChange={(e) => setNote(e.target.value)} />

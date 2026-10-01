@@ -2,10 +2,11 @@ import { useMutation } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AppShell, PageTitle } from "../components/Layout";
+import { CategoryPicker } from "../components/CategoryPicker";
 import {
-  Button, Card, ErrorState, Field, FormError, Input, MoneyInput, Select, Skeleton, Textarea,
+  Button, Card, ErrorState, Field, FormError, Input, MoneyInput, Skeleton, Textarea,
 } from "../components/ui";
-import { useCategories, usePlan, useTeam, useTeamInvalidation } from "../hooks/queries";
+import { usePlan, useTeam, useTeamInvalidation } from "../hooks/queries";
 import { ApiError, api } from "../lib/api";
 import { toMajorString, toMinor } from "../lib/money";
 import { useI18n } from "../lib/i18n";
@@ -25,7 +26,6 @@ export default function PlanForm() {
   const navigate = useNavigate();
   const { t } = useI18n();
   const team = useTeam(teamId);
-  const categories = useCategories(teamId);
   const plan = usePlan(teamId, planId);
   const invalidate = useTeamInvalidation(teamId);
   const editing = Boolean(planId);
@@ -167,14 +167,7 @@ export default function PlanForm() {
           </div>
         </Card>
         <Card className="flex flex-col gap-4 p-4 sm:p-5">
-          <Field label={t("Category")} hint={t("Optional")}>
-            {(id) => <Select id={id} value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
-              <option value="">{t("No category")}</option>
-              {categories.data?.map((category) => <option key={category.id} value={category.id}>
-                {category.emoji} {category.name}
-              </option>)}
-            </Select>}
-          </Field>
+          <CategoryPicker teamId={teamId} value={categoryId} onChange={setCategoryId} hint={t("Optional")} />
           <Field label={t("Note")} hint={t("Optional")}>
             {(id) => <Textarea id={id} value={note} onChange={(event) => setNote(event.target.value)} />}
           </Field>

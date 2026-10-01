@@ -11,9 +11,9 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints, model_validator
 
 from .models import ExpenseSource, ReceiptStatus, SplitMode, TeamRole
 
@@ -125,14 +125,17 @@ class InvitePreviewOut(BaseModel):
 # --------------------------------------------------------------------- categories
 
 
+CategoryName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)]
+
+
 class CategoryCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=60)
+    name: CategoryName
     emoji: str = Field(default="", max_length=8)
     color: str = Field(default="", max_length=9)
 
 
 class CategoryUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=60)
+    name: CategoryName | None = None
     emoji: str | None = Field(default=None, max_length=8)
     color: str | None = Field(default=None, max_length=9)
     is_archived: bool | None = None
