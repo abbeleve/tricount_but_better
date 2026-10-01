@@ -374,7 +374,7 @@ export default function ExpenseForm() {
               <span className="block text-[13px] text-muted">
                 {t(scanUnavailable
                   ? "Receipt scanning is not configured on this server."
-                  : "Upload photos on a computer, or take a photo on your phone.")}
+                  : "Upload, drop, or paste receipt photos. On a phone, you can also take a photo.")}
               </span>
             </span>
             <svg viewBox="0 0 16 16" className="size-4 shrink-0 text-subtle" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

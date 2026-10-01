@@ -84,7 +84,13 @@ POLZA_API_KEY=pza_...
 ```
 
 The key stays on the backend; the browser never receives it. On a computer,
-use **Upload photos**. On a phone, use **Take a photo** or **Choose from gallery**.
+use **Upload photos**, drag receipt images into the scanner, or paste a copied
+image with **Ctrl+V** / **⌘V** while the scanner is open. On a phone, use
+**Take a photo**, **Choose from gallery**, or **Paste photo** to add an image
+from the clipboard. If clipboard access is unavailable or denied, the scanner
+provides a field for the native **Paste** action. All input methods add to the
+same preview queue before **Read the receipt**; the image count and size limits
+apply to each method.
 You can add lines by hand first, then use **Add from receipt** to append scanned
 lines to the same expense.
 

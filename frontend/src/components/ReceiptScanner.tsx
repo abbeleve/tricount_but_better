@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { Button, Card, FormError, Skeleton, cx } from "./ui";
 import { useServerConfig } from "../hooks/queries";
 import { ApiError, api } from "../lib/api";
@@ -33,11 +33,24 @@ export function ReceiptScanner({ teamId, appendToExisting = false, onParsed, onC
   const config = useServerConfig();
   const cameraRef = useRef<HTMLInputElement>(null);
   const pickerRef = useRef<HTMLInputElement>(null);
+  const pasteRef = useRef<HTMLTextAreaElement>(null);
   const [shots, setShots] = useState<Shot[]>([]);
+  const shotList = useRef<Shot[]>([]);
   const urls = useRef(new Set<string>());
+  const mounted = useRef(true);
+  const scanLocked = useRef(false);
+  const clipboardBusy = useRef(false);
+  const dragDepth = useRef(0);
+  const [dragging, setDragging] = useState(false);
+  const [pasting, setPasting] = useState(false);
+  const [pasteFallback, setPasteFallback] = useState(false);
+  const [inputError, setInputError] = useState<string | null>(null);
   const max = config.data?.max_receipt_images ?? 8;
+  const maxUploadMb = config.data?.max_upload_mb ?? 12;
+  const available = config.data?.receipt_scanning !== false;
 
   const upload = useMutation({
+    onMutate: () => { scanLocked.current = true; },
     mutationFn: async (files: File[]) => {
       // Data URLs keep the transfer in memory; multipart UploadFile can spill
       // to a temporary file for large phone photos.
@@ -52,28 +65,111 @@ export function ReceiptScanner({ teamId, appendToExisting = false, onParsed, onC
       return api<ReceiptScan>(`/teams/${teamId}/receipts`, { body: { images } });
     },
     onSuccess: (receipt) => onParsed(receipt, receipt.items),
+    onSettled: () => { scanLocked.current = false; },
   });
 
   // Object URLs pin the image in memory until revoked.
   useEffect(() => {
+    mounted.current = true;
     const live = urls.current;
-    return () => live.forEach((url) => URL.revokeObjectURL(url));
+    return () => {
+      mounted.current = false;
+      live.forEach((url) => URL.revokeObjectURL(url));
+    };
   }, []);
 
-  function add(files: FileList | null) {
-    if (!files?.length) return;
-    const next = [...files].slice(0, Math.max(0, max - shots.length)).map((file) => {
+  const add = useCallback((files: FileList | readonly File[] | null) => {
+    if (!files?.length || !available || scanLocked.current || !mounted.current) return;
+    const images = [...files].filter((file) => file.type.startsWith("image/"));
+    const valid = images.filter((file) => file.size <= maxUploadMb * 1024 * 1024);
+    const remaining = Math.max(0, max - shotList.current.length);
+    setInputError(images.length !== files.length
+      ? t("Only image files can be added.")
+      : valid.length !== images.length
+        ? t("Each photo must be {size} MB or smaller.", { size: maxUploadMb })
+        : valid.length > remaining
+          ? t("You can add up to {count} photos.", { count: max })
+          : null);
+    const next = valid.slice(0, remaining).map((file) => {
       const url = URL.createObjectURL(file);
       urls.current.add(url);
       return { file, url };
     });
-    setShots((list) => [...list, ...next]);
+    shotList.current = [...shotList.current, ...next];
+    setShots(shotList.current);
+  }, [available, max, maxUploadMb, t]);
+
+  // Native paste works without clipboard-read permission. Leave ordinary text
+  // pastes alone so the rest of the expense form keeps behaving normally.
+  useEffect(() => {
+    if (!available) return;
+    function onPaste(event: ClipboardEvent) {
+      if (event.defaultPrevented || !event.clipboardData) return;
+      let files = [...event.clipboardData.files];
+      if (!files.length) {
+        files = [...event.clipboardData.items]
+          .map((item) => item.kind === "file" ? item.getAsFile() : null)
+          .filter((file): file is File => file !== null);
+      }
+      if (!files.some((file) => file.type.startsWith("image/"))) return;
+      event.preventDefault();
+      if (!clipboardBusy.current) add(files);
+    }
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [add, available]);
+
+  useEffect(() => {
+    if (pasteFallback) pasteRef.current?.focus();
+  }, [pasteFallback]);
+
+  async function pastePhoto() {
+    if (scanLocked.current || clipboardBusy.current) return;
+    setInputError(null);
+    if (!navigator.clipboard?.read) {
+      setPasteFallback(true);
+      pasteRef.current?.focus();
+      return;
+    }
+    clipboardBusy.current = true;
+    setPasting(true);
+    try {
+      const items = await navigator.clipboard.read();
+      const files: File[] = [];
+      for (const item of items) {
+        // A clipboard item can offer several encodings of the same photo.
+        const type = item.types.find((type) => type.startsWith("image/"));
+        if (!type) continue;
+        const blob = await item.getType(type);
+        files.push(new File([blob], "pasted-photo", { type }));
+      }
+      if (!mounted.current) return;
+      if (files.length) add(files);
+      else setInputError(t("Copy a photo first, then paste it here."));
+    } catch {
+      if (!mounted.current) return;
+      setPasteFallback(true);
+      pasteRef.current?.focus();
+    } finally {
+      clipboardBusy.current = false;
+      if (mounted.current) setPasting(false);
+    }
+  }
+
+  function drag(event: DragEvent<HTMLDivElement>) {
+    if (!event.dataTransfer.types.includes("Files")) return false;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = available && !scanLocked.current && !clipboardBusy.current
+      && shotList.current.length < max ? "copy" : "none";
+    return true;
   }
 
   function remove(url: string) {
     URL.revokeObjectURL(url);
     urls.current.delete(url);
-    setShots((list) => list.filter((s) => s.url !== url));
+    shotList.current = shotList.current.filter((s) => s.url !== url);
+    setShots(shotList.current);
+    setInputError(null);
   }
 
   /** "Add another": the camera on a phone, the file picker with a mouse. */
@@ -86,7 +182,26 @@ export function ReceiptScanner({ teamId, appendToExisting = false, onParsed, onC
   const failed = upload.isError;
 
   return (
-    <Card className="p-4 sm:p-5">
+    <div
+      onDragEnter={(event) => {
+        if (!drag(event)) return;
+        dragDepth.current += 1;
+        if (event.dataTransfer.dropEffect === "copy") setDragging(true);
+      }}
+      onDragOver={drag}
+      onDragLeave={(event) => {
+        event.preventDefault();
+        dragDepth.current = Math.max(0, dragDepth.current - 1);
+        if (!dragDepth.current) setDragging(false);
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        dragDepth.current = 0;
+        setDragging(false);
+        if (!clipboardBusy.current) add(event.dataTransfer.files);
+      }}
+    >
+    <Card className={cx("p-4 sm:p-5 transition-shadow", dragging && "ring-2 ring-ink bg-surface-2")}>
       <div className="mb-1 flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-body">{t("Scan a receipt")}</h2>
         <Button size="sm" variant="ghost" className="-mr-2" onClick={onCancel}>
@@ -114,6 +229,8 @@ export function ReceiptScanner({ teamId, appendToExisting = false, onParsed, onC
         }
       />
 
+      <FormError message={inputError} />
+
       {config.data?.receipt_scanning !== false && <>
       {/* `capture` opens the camera directly but hides the library, so each gets its own input. */}
       <input
@@ -121,6 +238,7 @@ export function ReceiptScanner({ teamId, appendToExisting = false, onParsed, onC
         type="file"
         accept="image/*"
         capture="environment"
+        disabled={working || pasting}
         className="sr-only"
         tabIndex={-1}
         aria-hidden="true"
@@ -134,6 +252,7 @@ export function ReceiptScanner({ teamId, appendToExisting = false, onParsed, onC
         type="file"
         accept="image/*"
         multiple
+        disabled={working || pasting}
         className="sr-only"
         tabIndex={-1}
         aria-hidden="true"
@@ -174,6 +293,7 @@ export function ReceiptScanner({ teamId, appendToExisting = false, onParsed, onC
               <button
                 type="button"
                 onClick={addAnother}
+                disabled={pasting}
                 className={cx(
                   "flex h-28 w-20 flex-col items-center justify-center gap-1 rounded-control",
                   "border border-dashed border-line-strong text-muted transition-colors",
@@ -189,6 +309,48 @@ export function ReceiptScanner({ teamId, appendToExisting = false, onParsed, onC
           )}
         </ul>
       )}
+      {!working && (
+        <div className="mb-3 mt-3 flex flex-col items-center gap-2">
+          <p className="text-center text-[13px] text-muted" role="status">
+            {dragging
+              ? t("Drop receipt photos here")
+              : <><span className="pointer-coarse:hidden">{t("Drop photos here, or paste with Ctrl+V / ⌘V.")}</span>
+                <span className="hidden pointer-coarse:inline">{t("Copy a receipt photo, then tap Paste photo.")}</span></>}
+          </p>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            loading={pasting}
+            disabled={shots.length >= max}
+            onClick={pastePhoto}
+          >
+            {t("Paste photo")}
+          </Button>
+          {pasteFallback && (
+            <>
+              <p className="text-center text-[13px] text-muted">
+                {t("Tap and hold in the field below and choose Paste, or press Ctrl+V / ⌘V. You can also choose a photo from your device.")}
+              </p>
+              <textarea
+                ref={pasteRef}
+                aria-label={t("Paste a receipt photo")}
+                rows={2}
+                value=""
+                onChange={() => {}}
+                onPaste={(event) => {
+                  if (![...event.clipboardData.items].some((item) => item.type.startsWith("image/"))
+                    && ![...event.clipboardData.files].some((file) => file.type.startsWith("image/"))) {
+                    event.preventDefault();
+                    setInputError(t("Copy a photo first, then paste it here."));
+                  }
+                }}
+                className="w-full resize-none rounded-control border border-line-strong bg-surface px-3 py-2 text-base"
+              />
+            </>
+          )}
+        </div>
+      )}
       {working ? (
         <div className="flex flex-col gap-3" aria-live="polite">
           <p className="text-sm text-muted">
@@ -203,7 +365,7 @@ export function ReceiptScanner({ teamId, appendToExisting = false, onParsed, onC
           ))}
         </div>
       ) : shots.length > 0 ? (
-        <Button type="button" full onClick={() => upload.mutate(shots.map((s) => s.file))}>
+        <Button type="button" full disabled={pasting} onClick={() => upload.mutate(shots.map((s) => s.file))}>
           {t(failed ? "Try again" : "Read the receipt")}
         </Button>
       ) : (
@@ -246,5 +408,6 @@ export function ReceiptScanner({ teamId, appendToExisting = false, onParsed, onC
       )}
       </>}
     </Card>
+    </div>
   );
 }
