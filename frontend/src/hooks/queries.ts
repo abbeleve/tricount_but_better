@@ -12,6 +12,7 @@ import type {
   PlannedExpense,
   ServerConfig,
   Settlement,
+  Spending,
   TeamDetail,
   TeamSummary,
 } from "../lib/types";
@@ -24,6 +25,7 @@ export const keys = {
   balances: (id: string) => ["team", id, "balances"] as const,
   categories: (id: string) => ["team", id, "categories"] as const,
   categoryTotals: (id: string) => ["team", id, "category-totals"] as const,
+  spending: (id: string) => ["team", id, "spending"] as const,
   expenses: (id: string) => ["team", id, "expenses"] as const,
   expense: (id: string, eid: string) => ["team", id, "expense", eid] as const,
   plans: (id: string) => ["team", id, "plans"] as const,
@@ -85,6 +87,12 @@ export const useExpenses = (teamId: string, search: string) =>
       api<ExpenseList>(
         `/teams/${teamId}/expenses?limit=100${search ? `&q=${encodeURIComponent(search)}` : ""}`,
       ),
+  });
+
+export const useSpending = (teamId: string) =>
+  useQuery({
+    queryKey: keys.spending(teamId),
+    queryFn: ({ signal }) => api<Spending>(`/teams/${teamId}/spending`, { signal }),
   });
 
 export const useExpense = (teamId: string, expenseId: string | undefined) =>

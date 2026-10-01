@@ -300,6 +300,17 @@ class BalancesOut(BaseModel):
     total_spend: int
 
 
+class DailySpendingOut(BaseModel):
+    date: date
+    total: int
+    expense_count: int
+
+
+class SpendingOut(BaseModel):
+    currency: str
+    days: list[DailySpendingOut]
+
+
 class CategoryTotalOut(BaseModel):
     category_id: uuid.UUID | None
     name: str

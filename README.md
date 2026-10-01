@@ -19,6 +19,7 @@ Photograph the receipt, and a vision model reads it into editable line items.
   structured line items. Photos and scan results are not stored by the app;
   only the lines you save as an expense persist. Everyone is on every line by
   default; tap a name off a line and they stop paying towards it.
+- **Spending analytics** — the Spending section in each team shows this week/month/year against the full previous period, a comparison chart, and history grouped by week, month, or year. Weeks start on Monday; totals use purchase dates and include refunds, excluding plans and paybacks.
 - **Planned purchases** — keep a shopping list with optional prices. Finish the
   purchase through the expense form; plans do not affect balances.
 - **Team categories** — any member can create shared categories from the Categories tab or while entering an expense or planned purchase, with an optional emoji and a spending breakdown.
@@ -106,7 +107,7 @@ uv run python scripts/check_vlm.py photo.jpg    # your own
 ```bash
 uv run pytest                       # in-memory SQLite, no network
 uv run ruff check src tests scripts
-cd frontend && npx tsc -b --noEmit && npx eslint . && npm run build
+cd frontend && npm test && npx tsc -b --noEmit && npx eslint . && npm run build
 ```
 
 No test calls a real model: the parser sits behind a `Protocol`, and the suite

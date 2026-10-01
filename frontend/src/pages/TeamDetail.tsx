@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { AppShell, PageTitle } from "../components/Layout";
 import { BalancesTab } from "../components/BalancesTab";
+import { SpendingTab } from "../components/SpendingTab";
 import { ExpensesTab } from "../components/ExpensesTab";
 import { PeopleTab } from "../components/PeopleTab";
 import { CategoriesTab } from "../components/CategoriesTab";
@@ -13,6 +14,7 @@ import { personWord, useI18n } from "../lib/i18n";
 const TABS = [
   { id: "balances", label: "Balances" },
   { id: "expenses", label: "Expenses" },
+  { id: "spending", label: "Spending" },
   { id: "people", label: "People" },
   { id: "categories", label: "Categories" },
 ] as const;
@@ -50,7 +52,7 @@ function Tabs({ active, onSelect }: { active: TabId; onSelect: (id: TabId) => vo
         "border-b border-line",
       )}
     >
-      <div role="tablist" aria-label={t("Team sections")} className="relative flex overflow-x-auto sm:gap-1">
+      <div role="tablist" aria-label={t("Team sections")} className="no-scrollbar relative flex max-w-full overflow-x-auto overflow-y-hidden sm:gap-1">
         {TABS.map((tab) => (
           <button
             key={tab.id}
@@ -72,7 +74,7 @@ function Tabs({ active, onSelect }: { active: TabId; onSelect: (id: TabId) => vo
         {bar && (
           <span
             aria-hidden="true"
-            className="absolute -bottom-px left-0 h-0.5 rounded-full bg-ink transition-[transform,width] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
+            className="absolute bottom-0 left-0 h-0.5 rounded-full bg-ink transition-[transform,width] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
             style={{ width: bar.w, transform: `translateX(${bar.x}px)` }}
           />
         )}
@@ -141,6 +143,7 @@ export default function TeamDetailPage() {
 
       {active === "balances" && <BalancesTab team={team.data} />}
       {active === "expenses" && <ExpensesTab team={team.data} />}
+      {active === "spending" && <SpendingTab team={team.data} />}
       {active === "people" && <PeopleTab team={team.data} />}
       {active === "categories" && <CategoriesTab teamId={teamId} />}
 

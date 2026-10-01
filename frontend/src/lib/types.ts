@@ -89,6 +89,17 @@ export interface ExpenseList {
   total_count: number;
 }
 
+export interface DailySpending {
+  date: string;
+  total: number;
+  expense_count: number;
+}
+
+export interface Spending {
+  currency: string;
+  days: DailySpending[];
+}
+
 export interface PlannedItem {
   name: string;
   total: number | null;

@@ -20,6 +20,7 @@
   orange #ea580c clears every check of the palette validator in both themes.
   Colour still never travels alone -- balances carry a +/- sign, a worded label,
   and, in the balance meter, a position left or right of the centre line.
+  Purple identifies spending history; dashed neutral lines show the previous period.
 
   SHAPE: exactly three radii. Cards 16px, controls 10px, chips fully round.
 */
@@ -48,6 +49,7 @@
   --negative-mark: #ea580c;
   --negative-soft: #fff7ed;
 
+  --chart-spending: #8b3db8;    /* period spending, distinct from balance direction */
   --chart-bar: #52525b;         /* single-series magnitude bars */
 
   /* Status, kept separate from the money palette on purpose: orange already
@@ -97,6 +99,7 @@
   --negative-mark: #ea580c;
   --negative-soft: #3a1c0a;
 
+  --chart-spending: #bd7fe3;
   --chart-bar: #a1a1aa;
 
   --danger: #f87171;
@@ -129,6 +132,7 @@
   --color-negative-mark: var(--negative-mark);
   --color-negative-soft: var(--negative-soft);
   --color-chart-bar: var(--chart-bar);
+  --color-chart-spending: var(--chart-spending);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
 
