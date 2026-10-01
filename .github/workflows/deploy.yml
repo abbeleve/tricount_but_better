@@ -57,7 +57,7 @@ jobs:
           PORT: ${{ secrets.SSH_PORT || '22' }}
         run: |
           # --delete is safe here because data lives OUTSIDE app/ and web/:
-          # the database, uploads and .env are siblings, never rsync targets.
+          # the database and .env are siblings, never rsync targets.
           rsync -az --delete \
             -e "ssh -F $HOME/.ssh/config -p $PORT" \
             --exclude '.venv' --exclude '__pycache__' \
@@ -77,7 +77,7 @@ jobs:
           ssh -F ~/.ssh/config -p "$PORT" "$USER@deploy-target" bash -seu <<EOF
             cd /opt/tricount/app
             export PATH="\$HOME/.local/bin:\$PATH"
-            uv sync --frozen --no-dev --extra socks
+            uv sync --frozen --no-dev
             sudo /usr/local/sbin/tricount-release
           EOF
 

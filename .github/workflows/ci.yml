@@ -44,6 +44,10 @@ jobs:
         env:
           DATABASE_URL: sqlite:///ci-check.db
 
+      - name: Production dependencies install
+        # Match the server command after tests finish, so deploy extras cannot drift.
+        run: uv sync --frozen --no-dev
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
