@@ -21,10 +21,10 @@ function PeriodPicker({ value, onChange, label }: {
   value: SpendingPeriod; onChange: (value: SpendingPeriod) => void; label: string;
 }) {
   const { t } = useI18n();
-  return <div role="group" aria-label={label} className="inline-flex rounded-control bg-surface-2 p-1">
+  return <div role="group" aria-label={label} className="inline-flex rounded-segment bg-surface-2 p-1">
     {SPENDING_PERIODS.map((period) => <button key={period} type="button" aria-pressed={value === period}
-      onClick={() => onChange(period)} className={cx("rounded-[7px] px-3 py-2 text-[13px] transition-colors",
-        value === period ? "bg-surface font-medium text-body shadow-sm" : "text-muted hover:text-body")}>
+      onClick={() => onChange(period)} className={cx("rounded-segment-option px-3 py-2 text-[13px] transition-colors",
+        value === period ? "bg-raised font-medium text-body shadow-raised" : "text-muted hover:text-body")}>
       {t(LABELS[period])}
     </button>)}
   </div>;

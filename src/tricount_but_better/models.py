@@ -74,6 +74,9 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    # The glass look and its palette, as the client last saved it. NULL means
+    # the defaults; ``schemas.Appearance`` validates it in both directions.
+    appearance: Mapped[dict | None] = mapped_column(JSON)
 
     memberships: Mapped[list[TeamMember]] = relationship(back_populates="user")
 

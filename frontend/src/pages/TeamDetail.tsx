@@ -74,7 +74,7 @@ function Tabs({ active, onSelect }: { active: TabId; onSelect: (id: TabId) => vo
         {bar && (
           <span
             aria-hidden="true"
-            className="absolute bottom-0 left-0 h-0.5 rounded-full bg-ink transition-[transform,width] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
+            className="absolute bottom-0 left-0 h-0.5 rounded-full bg-indicator transition-[transform,width] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
             style={{ width: bar.w, transform: `translateX(${bar.x}px)` }}
           />
         )}
@@ -126,7 +126,7 @@ export default function TeamDetailPage() {
           <Link
             to={`/teams/${teamId}/expenses/new`}
             className={cx(
-              "hidden h-10 items-center rounded-control bg-ink px-4 text-sm font-medium",
+              "hidden h-10 items-center rounded-button bg-ink px-4 text-sm font-medium",
               "text-ink-text hover:bg-ink-hover sm:inline-flex",
               PRESS,
             )}

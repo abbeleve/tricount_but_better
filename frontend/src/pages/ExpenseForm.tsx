@@ -364,7 +364,7 @@ export default function ExpenseForm() {
               "transition duration-150 ease-out active:scale-[0.98] active:duration-0",
             )}
           >
-            <span className="grid size-10 shrink-0 place-items-center rounded-control bg-ink text-ink-text">
+            <span className="grid size-10 shrink-0 place-items-center rounded-button bg-ink text-ink-text">
               <CameraIcon />
             </span>
             <span className="min-w-0 flex-1">
@@ -435,7 +435,7 @@ export default function ExpenseForm() {
             </p>
 
             {items.length === 0 && (
-              <p className="rounded-control bg-surface-2 px-3 py-6 text-center text-sm text-muted">
+              <p className="hatch rounded-control bg-surface-2 px-3 py-6 text-center text-sm text-muted">
                 {t("No lines yet. Add one by hand, or scan a receipt.")}
               </p>
             )}
@@ -489,7 +489,7 @@ export default function ExpenseForm() {
                       aria-label={t("Remove {name}", { name: item.name || t("Item") })}
                       onClick={() => setItems((list) => list.filter((i) => i.key !== item.key))}
                       className={cx(
-                        "-mr-1.5 grid size-8 shrink-0 place-items-center rounded-control text-muted",
+                        "-mr-1.5 grid size-8 shrink-0 place-items-center rounded-button text-muted",
                         "transition-colors hover:bg-surface-2 hover:text-body active:bg-surface-2 active:duration-0",
                         "pointer-coarse:-my-0.5 pointer-coarse:size-10",
                       )}

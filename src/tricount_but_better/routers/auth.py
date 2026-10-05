@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, status
+from pydantic import ValidationError
 from sqlalchemy import select
 
 from ..deps import CurrentUser, DbSession
 from ..models import User
-from ..schemas import LoginIn, RefreshIn, RegisterIn, TokenOut, UserOut
+from ..schemas import Appearance, LoginIn, RefreshIn, RegisterIn, TokenOut, UserOut
 from ..security import (
     TokenError,
     create_token,
@@ -77,6 +78,27 @@ def refresh(payload: RefreshIn, session: DbSession) -> TokenOut:
     return _tokens(user)
 
 
+def _appearance(user: User) -> Appearance:
+    """The stored look, or the defaults if there is none or it no longer validates."""
+    try:
+        return Appearance.model_validate(user.appearance or {})
+    except ValidationError:
+        return Appearance()
+
+
 @router.get("/me", response_model=UserOut)
-def me(user: CurrentUser) -> User:
-    return user
+def me(user: CurrentUser) -> UserOut:
+    return UserOut(
+        id=user.id,
+        email=user.email,
+        display_name=user.display_name,
+        appearance=_appearance(user),
+    )
+
+
+@router.put("/me/appearance", response_model=Appearance)
+def save_appearance(payload: Appearance, user: CurrentUser, session: DbSession) -> Appearance:
+    """Replace the caller's look as a whole; the client always sends all of it."""
+    user.appearance = payload.model_dump(mode="json")
+    session.commit()
+    return payload

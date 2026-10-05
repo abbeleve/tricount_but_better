@@ -156,7 +156,7 @@ export default function PlanForm() {
                       placeholder={t("Price")} />
                   </div>
                   <button type="button" aria-label={t("Remove {name}", { name: item.name || t("Item") })}
-                    className="size-10 shrink-0 rounded-control text-muted hover:bg-surface-2 disabled:opacity-40"
+                    className="size-10 shrink-0 rounded-button text-muted hover:bg-surface-2 disabled:opacity-40"
                     disabled={items.length === 1}
                     onClick={() => setItems((list) => list.filter((row) => row.key !== item.key))}>×</button>
                 </li>

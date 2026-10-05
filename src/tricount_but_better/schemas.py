@@ -46,10 +46,58 @@ class TokenOut(BaseModel):
     token_type: Literal["bearer"] = "bearer"
 
 
-class UserOut(ORMModel):
+# --------------------------------------------------------------------- appearance
+
+HexColor = Annotated[
+    str, StringConstraints(strip_whitespace=True, to_lower=True, pattern=r"^#[0-9a-fA-F]{6}$")
+]
+PaletteId = Annotated[str, StringConstraints(pattern=r"^[a-z0-9][a-z0-9-]{0,39}$")]
+PaletteName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)]
+UnitFloat = Annotated[float, Field(allow_inf_nan=False)]
+
+MAX_PALETTES = 12
+
+
+class Palette(BaseModel):
+    """Two colours the whole glass look is derived from."""
+
+    id: PaletteId
+    name: PaletteName
+    base: HexColor
+    accent: HexColor
+
+
+class Appearance(BaseModel):
+    """A user's look. Every field has a default, so a partial or older blob still loads.
+
+    ``palette`` names a built-in palette (the client owns that list) or one of
+    ``palettes``; an unknown id falls back to the default on the client.
+    """
+
+    glass: bool = False
+    palette: PaletteId = "mint"
+    palettes: list[Palette] = Field(default_factory=list, max_length=MAX_PALETTES)
+    glow: UnitFloat = Field(default=1.0, ge=0, le=2)  # backdrop glow strength
+    blur: int = Field(default=18, ge=0, le=40)  # frost radius in px; 0 = plain fill
+    fill: int = Field(default=55, ge=20, le=95)  # panel opacity in %
+    backdrop_seed: int = Field(default=0, ge=0, le=0xFFFFFFFF)  # 0 = hand-placed glows
+    flow: bool = False  # the glows drift
+    flow_speed: UnitFloat = Field(default=1.0, ge=0.25, le=4)
+    flow_range: UnitFloat = Field(default=1.0, ge=0.5, le=2)
+
+    @model_validator(mode="after")
+    def _unique_palette_ids(self) -> Self:
+        ids = [palette.id for palette in self.palettes]
+        if len(ids) != len(set(ids)):
+            raise ValueError("palette ids must be unique")
+        return self
+
+
+class UserOut(BaseModel):
     id: uuid.UUID
     email: EmailStr
     display_name: str
+    appearance: Appearance = Field(default_factory=Appearance)
 
 
 # -------------------------------------------------------------------------- teams

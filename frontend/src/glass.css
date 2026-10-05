@@ -1,0 +1,415 @@
+/*
+  GLASS
+  -----
+  The optional look: frosted, translucent panels floating over a softly tinted
+  ground and a few large blurred glows, all coloured from two colours the user
+  picks. Off by default. useAppearance puts `glass` on <html> and these on its
+  inline style:
+
+    --glass-base, --glass-accent     the palette
+    --glass-glow                     glow strength (1 = as designed)
+    --glass-fill                     panel opacity, a percentage
+    --glass-blur-px                  frost radius -- or --glass-blur: none
+    --glass-glow-N-x / -y            shuffled glow positions; unset = hand-placed
+    --glass-on-*                     readable ink on palette fills (worked out in JS)
+
+  Every other colour is derived here with color-mix(). The app's own tokens are
+  retuned rather than its components restyled, so untouched screens blend in.
+  Semantic colours -- teal/orange balances, red/green spending change, danger --
+  are never handed to the palette: no palette can make "owes" and "is owed",
+  or "more" and "less", look alike.
+
+  Tokens are unlayered so they beat `.dark`; component rules sit in the
+  components layer so a utility on one element still wins over them.
+*/
+
+/* ------------------------------------------------------------------ tokens */
+
+:root.glass {
+  --glass-base: #22a35a;
+  --glass-accent: #ee5a24;
+
+  /* A light and a deep version of the hue, for dark and light grounds. */
+  --glass-light: color-mix(in srgb, var(--glass-base) 72%, white);
+  --glass-deep: color-mix(in srgb, var(--glass-base) 40%, #0b0f0d);
+
+  --glass-blur: blur(var(--glass-blur-px, 18px)) saturate(1.4);
+
+  /* Status fills become tints, so they sit on the glass instead of over it. */
+  --positive-soft: color-mix(in srgb, var(--positive-mark) 12%, transparent);
+  --negative-soft: color-mix(in srgb, var(--negative-mark) 12%, transparent);
+  --spending-up-soft: color-mix(in srgb, var(--spending-up) 12%, transparent);
+  --spending-down-soft: color-mix(in srgb, var(--spending-down) 12%, transparent);
+  --danger-soft: color-mix(in srgb, var(--danger) 10%, transparent);
+
+  --focus: var(--ink);
+  --card-border: var(--glass-border);
+  --indicator: var(--glass-accent-mark);
+  --brand: var(--glass-accent-mark);
+
+  /* Everything clickable is round. */
+  --r-card: 20px;
+  --r-button: 999px;
+  --r-segment: 999px;
+  --r-segment-option: 999px;
+}
+
+/* Light. */
+:root.glass:not(.dark) {
+  --glass-bg: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--glass-base) 3%, white) var(--glass-fill, 52%),
+    transparent
+  );
+  --glass-bg-strong: color-mix(in srgb, color-mix(in srgb, var(--glass-base) 2%, white) 82%, transparent);
+  /* The bright edge is what sells a pane of glass on a pale ground. */
+  --glass-border: rgba(255, 255, 255, 0.9);
+  /* The shadow is tinted with the hue, never grey. */
+  --glass-shadow:
+    0 1px 2px color-mix(in srgb, var(--glass-deep) 6%, transparent),
+    0 14px 34px -16px color-mix(in srgb, var(--glass-deep) 26%, transparent);
+  --glass-ground: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--glass-base) 4%, white) 0%,
+    color-mix(in srgb, var(--glass-base) 9%, white) 100%
+  );
+  --glass-accent-mark: var(--glass-accent);
+
+  --hatch-ink: color-mix(in srgb, var(--glass-base) 28%, transparent);
+  --hatch-base: color-mix(in srgb, var(--glass-base) 6%, transparent);
+
+  --bg: color-mix(in srgb, var(--glass-base) 6%, white);
+  --surface: var(--glass-bg-strong);
+  --surface-2: color-mix(in srgb, var(--glass-deep) 7%, transparent);
+  --surface-3: color-mix(in srgb, var(--glass-deep) 12%, transparent);
+  --surface-raised: #ffffff;
+  --surface-overlay: color-mix(in srgb, var(--glass-base) 2%, white);
+  --border: color-mix(in srgb, var(--glass-deep) 14%, transparent);
+  --border-strong: color-mix(in srgb, var(--glass-deep) 26%, transparent);
+
+  --text: color-mix(in srgb, var(--glass-base) 14%, #0d1310);
+  --text-muted: color-mix(in srgb, var(--glass-base) 22%, #4c544f);
+  --text-subtle: color-mix(in srgb, var(--glass-base) 18%, #7d847f);
+
+  --ink: color-mix(in srgb, var(--glass-base) 88%, black);
+  --ink-text: var(--glass-on-primary-light, #ffffff);
+  --ink-hover: color-mix(in srgb, var(--ink) 90%, white);
+  --brand-ink: var(--glass-on-accent-light, #ffffff);
+  --avatar: color-mix(in srgb, var(--glass-accent) 16%, transparent);
+  --avatar-ink: color-mix(in srgb, var(--glass-accent) 55%, black);
+
+  --shadow-pill: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+  --scrollbar-thumb: color-mix(in srgb, var(--glass-deep) 26%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--glass-deep) 40%, transparent);
+  --scrollbar-thumb-active: color-mix(in srgb, var(--glass-deep) 52%, transparent);
+}
+
+/* Dark. Text keeps its colours; everything it sits on takes the hue. */
+:root.glass.dark {
+  --glass-bg: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--glass-base) 14%, #101512) var(--glass-fill, 55%),
+    transparent
+  );
+  --glass-bg-strong: color-mix(in srgb, color-mix(in srgb, var(--glass-base) 16%, #151b17) 82%, transparent);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-shadow: 0 1px 1px rgba(0, 0, 0, 0.2), 0 14px 34px -18px rgba(0, 0, 0, 0.7);
+  --glass-ground: color-mix(in srgb, var(--glass-base) 6%, #090c0a);
+  --glass-accent-mark: color-mix(in srgb, var(--glass-accent) 85%, white);
+
+  --hatch-ink: color-mix(in srgb, var(--glass-light) 22%, transparent);
+  --hatch-base: color-mix(in srgb, var(--glass-light) 5%, transparent);
+
+  --bg: color-mix(in srgb, var(--glass-base) 6%, #090c0a);
+  --surface: var(--glass-bg-strong);
+  --surface-2: rgba(255, 255, 255, 0.06);
+  --surface-3: rgba(255, 255, 255, 0.1);
+  --surface-raised: color-mix(in srgb, var(--glass-base) 20%, #1c221e);
+  --surface-overlay: color-mix(in srgb, var(--glass-base) 12%, #141916);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.16);
+
+  --ink: var(--glass-light);
+  --ink-text: var(--glass-on-primary-dark, #0a0f0c);
+  --ink-hover: color-mix(in srgb, var(--glass-light) 88%, white);
+  --brand-ink: var(--glass-on-accent-dark, #0a0f0c);
+  --avatar: color-mix(in srgb, var(--glass-accent) 24%, transparent);
+  --avatar-ink: color-mix(in srgb, var(--glass-accent) 45%, white);
+
+  --positive-soft: color-mix(in srgb, var(--positive-mark) 16%, transparent);
+  --negative-soft: color-mix(in srgb, var(--negative-mark) 16%, transparent);
+  --spending-up-soft: color-mix(in srgb, var(--spending-up) 16%, transparent);
+  --spending-down-soft: color-mix(in srgb, var(--spending-down) 16%, transparent);
+  --danger-soft: color-mix(in srgb, var(--danger) 14%, transparent);
+
+  --shadow-pill: 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --scrollbar-thumb: color-mix(in srgb, var(--glass-light) 22%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--glass-light) 36%, transparent);
+  --scrollbar-thumb-active: color-mix(in srgb, var(--glass-light) 48%, transparent);
+}
+
+/* A phone repaints the blur on a smaller budget. */
+@media (pointer: coarse) {
+  :root.glass {
+    --glass-blur: blur(calc(var(--glass-blur-px, 18px) * 0.55)) saturate(1.3);
+  }
+}
+
+@layer components {
+  /* ------------------------------------------------------------- backdrop */
+
+  /*
+    The ground and four glows, in a fixed layer at the bottom of the root
+    stacking context (see GlassBackdrop). Each glow is three boxes: the outer
+    one is placed with `translate`, which leaves `transform` free for the walk.
+  */
+  .glass-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    pointer-events: none;
+    background: var(--glass-ground);
+  }
+
+  .glass-glow {
+    position: absolute;
+    left: var(--glow-x);
+    top: var(--glow-y);
+    width: calc(2 * var(--glow-rx));
+    height: calc(2 * var(--glow-ry));
+    translate: -50% -50%;
+    /* A shuffle glides the glows to their new places. */
+    transition:
+      left 1.2s cubic-bezier(0.23, 1, 0.32, 1),
+      top 1.2s cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  .glass-glow-drift,
+  .glass-glow-shape {
+    width: 100%;
+    height: 100%;
+  }
+
+  .glass-glow-shape {
+    background: radial-gradient(closest-side, var(--glow-color), transparent var(--glow-fade, 70%));
+  }
+
+  /* Where each glow sits (a shuffle seed overrides it), how big, what colour. */
+  .glass-glow--1 {
+    --glow-x: var(--glass-glow-1-x, 50%);
+    --glow-y: var(--glass-glow-1-y, 22%);
+    --glow-rx: 52%;
+    --glow-ry: 44%;
+    --glow-fade: 72%;
+    --glow-color: color-mix(in srgb, var(--glass-base) 30%, transparent);
+  }
+  .glass-glow--2 {
+    --glow-x: var(--glass-glow-2-x, 92%);
+    --glow-y: var(--glass-glow-2-y, 8%);
+    --glow-rx: 34%;
+    --glow-ry: 40%;
+    --glow-color: color-mix(in srgb, var(--glass-base) 16%, transparent);
+  }
+  .glass-glow--3 {
+    --glow-x: var(--glass-glow-3-x, 4%);
+    --glow-y: var(--glass-glow-3-y, 90%);
+    --glow-rx: 40%;
+    --glow-ry: 46%;
+    --glow-color: color-mix(in srgb, var(--glass-base) 16%, transparent);
+  }
+  .glass-glow--4 {
+    --glow-x: var(--glass-glow-4-x, 74%);
+    --glow-y: var(--glass-glow-4-y, 96%);
+    --glow-rx: 30%;
+    --glow-ry: 34%;
+    --glow-color: color-mix(in srgb, var(--glass-base) 14%, transparent);
+  }
+
+  /* Light: a pale tint on white needs more pigment, and a little more size. */
+  :root:not(.dark) .glass-glow--1 {
+    --glow-rx: 56%;
+    --glow-ry: 48%;
+    --glow-color: color-mix(in srgb, var(--glass-base) 42%, transparent);
+  }
+  :root:not(.dark) .glass-glow--2 {
+    --glow-rx: 38%;
+    --glow-ry: 44%;
+    --glow-color: color-mix(in srgb, var(--glass-base) 32%, transparent);
+  }
+  :root:not(.dark) .glass-glow--3 {
+    --glow-rx: 44%;
+    --glow-ry: 50%;
+    --glow-color: color-mix(in srgb, var(--glass-base) 32%, transparent);
+  }
+  :root:not(.dark) .glass-glow--4 {
+    --glow-rx: 34%;
+    --glow-ry: 38%;
+    --glow-color: color-mix(in srgb, var(--glass-base) 28%, transparent);
+  }
+
+  /*
+    Where the browser has relative colours: glow strength, and two glows that
+    turn the hue +-35deg in oklch, so a green palette gets lime and teal
+    neighbours and a blue one cyan and violet. Elsewhere the plain mixes above
+    stand, at the designed strength.
+  */
+  @supports (color: oklch(from red l c h)) {
+    .glass-glow--1 {
+      --glow-color: rgb(from var(--glass-base) r g b / calc(0.3 * var(--glass-glow, 1)));
+    }
+    .glass-glow--2 {
+      --glow-color: oklch(from var(--glass-base) 0.62 c calc(h - 35) / calc(0.18 * var(--glass-glow, 1)));
+    }
+    .glass-glow--3 {
+      --glow-color: oklch(from var(--glass-base) 0.6 c calc(h + 35) / calc(0.18 * var(--glass-glow, 1)));
+    }
+    .glass-glow--4 {
+      --glow-color: rgb(from var(--glass-base) r g b / calc(0.14 * var(--glass-glow, 1)));
+    }
+    :root:not(.dark) .glass-glow--1 {
+      --glow-color: rgb(from var(--glass-base) r g b / calc(0.42 * var(--glass-glow, 1)));
+    }
+    :root:not(.dark) .glass-glow--2 {
+      --glow-color: oklch(
+        from var(--glass-base) 0.92 calc(c * 0.8) calc(h - 35) / calc(0.75 * var(--glass-glow, 1))
+      );
+    }
+    :root:not(.dark) .glass-glow--3 {
+      --glow-color: oklch(
+        from var(--glass-base) 0.88 calc(c * 0.6) calc(h + 35) / calc(0.6 * var(--glass-glow, 1))
+      );
+    }
+    :root:not(.dark) .glass-glow--4 {
+      --glow-color: rgb(from var(--glass-base) r g b / calc(0.28 * var(--glass-glow, 1)));
+    }
+  }
+
+  /* --------------------------------------------------------------- panels */
+
+  /*
+    The frost lives on ::before, not on the panel. An element with
+    backdrop-filter becomes the containing block of every position: fixed
+    descendant, so a popover opened inside a frosted panel would be placed
+    against the panel instead of the window. The panel keeps only its edge and
+    shadow, and deliberately gets no stacking context of its own (no z-index,
+    opacity, transform or filter), so every ::before lands in the page's
+    context below: above its empty background, below every panel's content.
+  */
+  :root.glass .card {
+    position: relative;
+    background-color: transparent;
+    /* On the panel itself, so a panel with overflow: hidden still casts it. */
+    box-shadow: var(--glass-shadow);
+  }
+
+  :root.glass .card::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    z-index: -1;
+    border-radius: inherit;
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    pointer-events: none;
+  }
+
+  /* The stacking context every frost layer lands in; still under the header. */
+  :root.glass .app-main {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Bars let the glows through. */
+  :root.glass .material {
+    background-color: color-mix(in srgb, var(--bg) 45%, transparent);
+  }
+
+  /* ---------------------------------------------------------- empty slots */
+
+  /*
+    Every "nothing here yet" surface -- an empty bar track, an empty list --
+    is hatched in the palette's colour: it reads as empty at a glance without
+    competing with filled marks.
+  */
+  :root.glass .hatch {
+    background-image: repeating-linear-gradient(135deg, var(--hatch-ink) 0 1.5px, transparent 1.5px 6px);
+  }
+
+  :root.glass .track {
+    background-image: repeating-linear-gradient(135deg, var(--hatch-ink) 0 1.5px, transparent 1.5px 5px);
+  }
+
+  :root.glass .empty-state {
+    margin: 0.375rem;
+    border-radius: calc(var(--r-card) - 0.375rem);
+    background-color: var(--hatch-base);
+  }
+
+  /* --------------------------------------------- reduced transparency */
+
+  @media (prefers-reduced-transparency: reduce) {
+    :root.glass .material {
+      background-color: var(--bg);
+    }
+    :root.glass .card::before {
+      background: var(--surface-overlay);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+  }
+}
+
+/* -------------------------------------------------------------- scrollbars */
+
+/*
+  One slim scrollbar, tinted with the palette. The thumb sits inside a
+  transparent border, so it reads slim but is easy to grab, and fills out on
+  hover. In the base layer with no specificity, so `.no-scrollbar` still wins.
+*/
+@layer base {
+  :where(.glass) ::-webkit-scrollbar,
+  :where(.glass)::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  :where(.glass) ::-webkit-scrollbar-track,
+  :where(.glass) ::-webkit-scrollbar-corner,
+  :where(.glass)::-webkit-scrollbar-track,
+  :where(.glass)::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  :where(.glass) ::-webkit-scrollbar-button,
+  :where(.glass)::-webkit-scrollbar-button {
+    display: none;
+  }
+  :where(.glass) ::-webkit-scrollbar-thumb,
+  :where(.glass)::-webkit-scrollbar-thumb {
+    min-height: 40px;
+    min-width: 40px;
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-color: var(--scrollbar-thumb);
+    background-clip: padding-box;
+  }
+  :where(.glass) ::-webkit-scrollbar-thumb:hover,
+  :where(.glass)::-webkit-scrollbar-thumb:hover {
+    border-width: 2px;
+    background-color: var(--scrollbar-thumb-hover);
+  }
+  :where(.glass) ::-webkit-scrollbar-thumb:active,
+  :where(.glass)::-webkit-scrollbar-thumb:active {
+    background-color: var(--scrollbar-thumb-active);
+  }
+
+  /* Firefox: only the standard properties. Chromium would let these override
+     the pseudo-elements above, hence the guard. */
+  @supports not selector(::-webkit-scrollbar) {
+    :where(.glass),
+    :where(.glass) * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--scrollbar-thumb) transparent;
+    }
+  }
+}

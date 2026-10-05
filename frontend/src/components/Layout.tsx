@@ -1,19 +1,17 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useAppearance } from "../hooks/useAppearance";
 import { useAuth } from "../hooks/useAuth";
+import { swatch } from "../lib/glass";
 import { useI18n } from "../lib/i18n";
+import { syncThemeColor } from "../lib/themeColor";
 import { Avatar, Button, cx } from "./ui";
-
-/** Matches --bg, so the phone's status bar and browser chrome blend into the header. */
-const THEME_COLOR = { light: "#fafafa", dark: "#09090b" };
 
 function useTheme() {
   const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"));
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
-    document
-      .querySelector('meta[name="theme-color"]')
-      ?.setAttribute("content", dark ? THEME_COLOR.dark : THEME_COLOR.light);
+    syncThemeColor();
     try {
       localStorage.setItem("theme", dark ? "dark" : "light");
     } catch {
@@ -45,7 +43,7 @@ function ThemeToggle({ theme: [dark, toggle], className }: { theme: Theme; class
       onClick={toggle}
       aria-label={t(dark ? "Switch to light theme" : "Switch to dark theme")}
       className={cx(
-        "size-9 place-items-center rounded-control text-muted",
+        "size-9 place-items-center rounded-button text-muted",
         "transition-colors hover:bg-surface-2 hover:text-body active:bg-surface-2",
         className,
       )}
@@ -63,9 +61,11 @@ const MENU_ITEM = cx(
 function AccountMenu({ theme }: { theme: Theme }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [open, setOpen] = useState(false);
   const [dark, toggleTheme] = theme;
   const { language, setLanguage, t } = useI18n();
+  const look = useAppearance();
 
   useEffect(() => {
     if (!open) return;
@@ -101,7 +101,7 @@ function AccountMenu({ theme }: { theme: Theme }) {
         <div
           role="menu"
           className={cx(
-            "absolute right-0 z-50 mt-2 w-60 overflow-hidden rounded-card border border-line bg-surface shadow-lg",
+            "absolute right-0 z-50 mt-2 w-60 overflow-hidden rounded-card border border-line bg-overlay shadow-lg",
             // Grows out of the avatar that opened it, not from its own centre.
             "origin-top-right transition duration-150 ease-out starting:scale-95 starting:opacity-0",
           )}
@@ -123,6 +123,25 @@ function AccountMenu({ theme }: { theme: Theme }) {
               <ThemeIcon dark={dark} />
             </span>
             {t(dark ? "Light theme" : "Dark theme")}
+          </button>
+          <button
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              // Remembered, so the page's back button returns here rather than to the team list.
+              navigate("/appearance", { state: { from: location.pathname + location.search } });
+            }}
+            className={MENU_ITEM}
+          >
+            <span
+              aria-hidden="true"
+              className="size-4.5 shrink-0 rounded-full shadow-[inset_0_0_0_1px_rgb(0_0_0/0.12)]"
+              style={{ background: swatch(look.palette) }}
+            />
+            {t("Appearance")}
+            <span className="ml-auto text-[12px] text-muted">
+              {t(look.appearance.glass ? "Glass" : "Standard")}
+            </span>
           </button>
           <div className="border-t border-line px-3 py-2.5">
             <p className="mb-2 text-[12px] text-muted">{t("Language")}</p>
@@ -164,7 +183,7 @@ export interface Back {
 function Brand({ className }: { className?: string }) {
   return (
     <Link to="/" className={cx("items-center gap-2.5 rounded-control", className)}>
-      <span className="grid size-7 place-items-center rounded-lg bg-ink text-ink-text">
+      <span className="grid size-7 place-items-center rounded-lg bg-brand text-brand-ink">
         <svg viewBox="0 0 20 20" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <path d="M4 6h12M4 10h12M4 14h7" />
         </svg>
@@ -219,22 +238,26 @@ export function Header({ back }: { back?: Back }) {
  * `back` puts a back button in the phone header (and a back link above the
  * content on wider screens). `bar` is pinned to the bottom edge above the home
  * indicator -- the place a thumb already is -- for a page's primary action.
+ * `narrow` centres a reading-width column, for settings rather than data.
  */
 export function AppShell({
   children,
   back,
   bar,
+  narrow = false,
 }: {
   children: React.ReactNode;
   back?: Back;
   bar?: React.ReactNode;
+  narrow?: boolean;
 }) {
   return (
-    <div className="min-h-dvh bg-bg">
+    <div className="min-h-dvh">
       <Header back={back} />
       <main
         className={cx(
-          "gutter mx-auto max-w-5xl pt-5 sm:pt-6",
+          "app-main gutter mx-auto pt-5 sm:pt-6",
+          narrow ? "max-w-2xl" : "max-w-5xl",
           // Clearance for the floating add button and the home indicator.
           bar ? "pb-6" : "pb-[calc(6rem+env(safe-area-inset-bottom))] sm:pb-16",
         )}
@@ -255,7 +278,7 @@ export function AppShell({
 export function AuthShell({ children }: { children: React.ReactNode }) {
   const { language, setLanguage, t } = useI18n();
   return (
-    <div className="gutter grid min-h-dvh place-items-center bg-bg pb-[max(2.5rem,env(safe-area-inset-bottom))] pt-[max(2.5rem,env(safe-area-inset-top))]">
+    <div className="gutter grid min-h-dvh place-items-center pb-[max(2.5rem,env(safe-area-inset-bottom))] pt-[max(2.5rem,env(safe-area-inset-top))]">
       <div className="w-full max-w-sm">
         {children}
         <div className="mt-5 flex justify-center gap-3 text-[13px] text-muted" role="group" aria-label={t("Language")}>

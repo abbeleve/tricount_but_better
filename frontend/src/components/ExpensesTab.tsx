@@ -49,14 +49,14 @@ export function ExpensesTab({ team }: { team: TeamDetail }) {
             <p className="text-[12px] text-muted">{t("Shopping lists stay out of balances until purchased.")}</p>
           </div>
           <Link to={`/teams/${team.id}/plans/new`}
-            className="shrink-0 rounded-control border border-line-strong px-3 py-2 text-[13px] font-medium text-body hover:bg-surface-2">
+            className="shrink-0 rounded-button border border-line-strong px-3 py-2 text-[13px] font-medium text-body hover:bg-surface-2">
             {t("New plan")}
           </Link>
         </div>
         {plans.isPending && <Card className="h-18 p-4"><Skeleton className="h-4 w-40" /></Card>}
         {plans.isError && <Card><ErrorState message={t("Could not load plans.")} onRetry={() => plans.refetch()} /></Card>}
         {plans.data && plans.data.length === 0 && (
-          <Card className="px-4 py-5 text-sm text-muted">{t("Nothing planned yet. Add a shopping list when you know what to buy.")}</Card>
+          <Card className="hatch px-4 py-5 text-sm text-muted">{t("Nothing planned yet. Add a shopping list when you know what to buy.")}</Card>
         )}
         {plans.data && plans.data.length > 0 && (
           <Card className="divide-y divide-line overflow-hidden">

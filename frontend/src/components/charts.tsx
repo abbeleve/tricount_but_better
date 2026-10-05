@@ -59,7 +59,7 @@ export function BalanceMeter({
               </div>
 
               {/* Track with a centre baseline; the bar grows away from it. */}
-              <div className="relative h-2 w-full rounded-full bg-surface-2">
+              <div className="track relative h-2 w-full rounded-full bg-surface-2">
                 <div className="absolute inset-y-[-3px] left-1/2 w-px -translate-x-1/2 bg-line-strong" />
                 {balance.net !== 0 && (
                   <div
@@ -120,7 +120,7 @@ export function CategoryBreakdown({
                 <span className="ml-2 text-[12px] text-subtle tabular">{share}%</span>
               </span>
             </div>
-            <div className="h-2 w-full rounded-full bg-surface-2">
+            <div className="track h-2 w-full rounded-full bg-surface-2">
               <div
                 className="h-2 rounded-r-[4px] bg-chart-bar opacity-80 transition-opacity group-hover:opacity-100"
                 style={{ width: `${Math.max((entry.total / scale) * 100, 1.5)}%` }}

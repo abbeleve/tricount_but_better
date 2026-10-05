@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";
+@import "./glass.css";
 
 /* Theme is class-driven so the toggle wins over the OS setting. */
 @custom-variant dark (&:where(.dark, .dark *));
@@ -24,6 +25,11 @@
   Spending increases use red and decreases use green, accompanied by arrows and words.
 
   SHAPE: exactly three radii. Cards 16px, controls 10px, chips fully round.
+
+  The optional glass look (glass.css) retunes these tokens from a two-colour
+  palette. Components therefore name a token by its job -- the tab marker, an
+  avatar, a raised segment -- rather than borrowing a neighbour's, so the look
+  can recolour each job on its own.
 */
 :root {
   color-scheme: light;
@@ -68,6 +74,19 @@
 
   --r-card: 16px;
   --r-control: 10px;
+
+  /* Jobs that share a colour or shape today but take their own under glass. */
+  --surface-raised: var(--surface);   /* the selected segment of a toggle */
+  --surface-overlay: var(--surface);  /* menus over the page */
+  --indicator: var(--ink);            /* the sliding tab marker */
+  --brand: var(--ink);
+  --brand-ink: var(--ink-text);
+  --avatar: var(--surface-3);
+  --avatar-ink: var(--text-muted);
+  --shadow-pill: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --r-button: var(--r-control);
+  --r-segment: var(--r-control);
+  --r-segment-option: 7px;
 
   /* Header bar height, excluding the status-bar inset above it. Sticky bars
      below the header offset themselves by this. */
@@ -150,9 +169,21 @@
   --color-spending-down-soft: var(--spending-down-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
+  --color-raised: var(--surface-raised);
+  --color-overlay: var(--surface-overlay);
+  --color-indicator: var(--indicator);
+  --color-brand: var(--brand);
+  --color-brand-ink: var(--brand-ink);
+  --color-avatar: var(--avatar);
+  --color-avatar-ink: var(--avatar-ink);
 
   --radius-card: var(--r-card);
   --radius-control: var(--r-control);
+  --radius-button: var(--r-button);
+  --radius-segment: var(--r-segment);
+  --radius-segment-option: var(--r-segment-option);
+
+  --shadow-raised: var(--shadow-pill);
 
   --font-sans: "Geist Variable", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
@@ -286,8 +317,62 @@
 
   .card {
     background-color: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid var(--card-border, var(--border));
     border-radius: var(--r-card);
+  }
+
+  /* A checkbox drawn as an on/off switch. Keeps role="switch" semantics. */
+  .switch {
+    appearance: none;
+    position: relative;
+    flex: none;
+    width: 2.125rem;
+    height: 1.25rem;
+    margin: 0;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--text-subtle) 55%, transparent);
+    cursor: pointer;
+    transition: background-color 160ms ease;
+  }
+  .switch::before {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    transition: transform 180ms cubic-bezier(0.23, 1, 0.32, 1), background-color 160ms ease;
+  }
+  .switch:checked {
+    background: var(--ink);
+  }
+  .switch:checked::before {
+    transform: translateX(0.875rem);
+    background: var(--ink-text);
+  }
+  .switch:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  /* The native colour well, without the browser's inset frame. */
+  .color-well {
+    padding: 3px;
+    cursor: pointer;
+  }
+  .color-well::-webkit-color-swatch-wrapper {
+    padding: 0;
+  }
+  .color-well::-webkit-color-swatch {
+    border: none;
+    border-radius: calc(var(--r-control) - 4px);
+  }
+  .color-well::-moz-color-swatch {
+    border: none;
+    border-radius: calc(var(--r-control) - 4px);
   }
 
   /* Skeletons match the shape of what they replace, rather than spinning. */

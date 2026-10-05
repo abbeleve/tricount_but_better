@@ -8,6 +8,8 @@ export interface User {
   id: string;
   email: string;
   display_name: string;
+  /** Raw from the server; read it through parseAppearance (lib/glass.ts). */
+  appearance?: unknown;
 }
 
 export interface Tokens {

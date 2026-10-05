@@ -24,6 +24,13 @@ Photograph the receipt, and a vision model reads it into editable line items.
   purchase through the expense form; plans do not affect balances.
 - **Team categories** — any member can create shared categories from the Categories tab or while entering an expense or planned purchase, with an optional emoji and a spending breakdown.
 - Works on a phone and on a desktop; light and dark. English and Russian can be selected from the account menu (or on the sign-in screen). The home screen shows how much you owe across teams, separated by currency.
+- **Glass design (optional)** — frosted, translucent panels over a soft backdrop
+  of coloured glows, switched on under **Appearance** in the account menu. Pick
+  a built-in palette or make your own from two colours, tune the glow strength,
+  frost and panel opacity, shuffle the glow layout, and let the backdrop drift
+  at the speed and range you like. The look is saved to your account, so it
+  follows you to every device. Balance and spending colours never take the
+  palette, so "owes" and "is owed" always stay distinguishable.
 
 ## How it is built
 
@@ -136,7 +143,16 @@ src/tricount_but_better/
 ├── routers/        auth, teams, invites, categories, expenses, plans, receipts
 └── vlm/            the receipt parser — schema, prompt, Polza provider
 frontend/src/
-├── lib/            API client, money formatting (mirrors money.py)
-├── components/     UI primitives, charts, team tabs, receipt scanner
-└── pages/          login, register, teams, team detail, expense and plan forms
+├── lib/            API client, money formatting (mirrors money.py), glass palettes
+├── components/     UI primitives, charts, team tabs, receipt scanner, glass backdrop
+├── pages/          login, register, teams, team detail, expense and plan forms, appearance
+├── index.css       design tokens
+└── glass.css       the optional glass look: retunes those tokens from a palette
 ```
+
+The glass look never restyles a component directly. `useAppearance` puts a
+`glass` class and the palette's two colours on `<html>`; `glass.css` derives
+every other colour from them with `color-mix()` and retunes the app's own
+tokens, so a screen that has never heard of glass still blends in. Panels frost
+through a `::before` layer rather than `backdrop-filter` on the panel itself,
+so anything `position: fixed` inside a panel still anchors to the window.

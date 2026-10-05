@@ -64,7 +64,7 @@ export function Button({
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       className={cx(
-        "inline-flex items-center justify-center gap-2 rounded-control font-medium",
+        "inline-flex items-center justify-center gap-2 rounded-button font-medium",
         "whitespace-nowrap",
         PRESS,
         "disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100",
@@ -187,6 +187,28 @@ export function Textarea({ className, ...rest }: InputHTMLAttributes<HTMLTextAre
   );
 }
 
+/** An on/off control. Wrap it and its words in a <label> so the whole row toggles. */
+export function Switch({
+  checked,
+  onChange,
+  className,
+  ...rest
+}: Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "onChange" | "checked"> & {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <input
+      {...rest}
+      type="checkbox"
+      role="switch"
+      checked={checked}
+      onChange={(e) => onChange(e.target.checked)}
+      className={cx("switch", className)}
+    />
+  );
+}
+
 /* -------------------------------------------------------------------- money */
 
 interface MoneyProps {
@@ -228,7 +250,7 @@ export function Avatar({ name, size = 32 }: { name: string; size?: number }) {
     .join("");
   return (
     <span
-      className="inline-flex shrink-0 items-center justify-center rounded-full bg-surface-3 font-medium text-muted"
+      className="inline-flex shrink-0 items-center justify-center rounded-full bg-avatar font-medium text-avatar-ink"
       style={{ width: size, height: size, fontSize: size * 0.38 }}
       aria-hidden="true"
     >
@@ -265,7 +287,7 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
+    <div className="empty-state hatch flex flex-col items-center gap-3 px-6 py-14 text-center">
       <h3 className="text-base font-semibold text-body">{title}</h3>
       <p className="max-w-[46ch] text-sm leading-relaxed text-muted">{body}</p>
       {action && <div className="mt-1">{action}</div>}
