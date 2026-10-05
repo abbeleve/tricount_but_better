@@ -4,6 +4,7 @@ import { AuthShell } from "../components/Layout";
 import { Button, Card, Field, FormError, Input } from "../components/ui";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError } from "../lib/api";
+import { playWelcome } from "../lib/entrance";
 import { useI18n } from "../lib/i18n";
 
 export default function Login() {
@@ -20,7 +21,7 @@ export default function Login() {
     setError(null);
     setBusy(true);
     try {
-      await login(email, password);
+      await login(email, password, (user) => playWelcome(user.display_name, true));
       navigate("/", { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not reach the server.");

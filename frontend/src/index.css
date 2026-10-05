@@ -393,3 +393,177 @@
     100% { background-position: 0 50%; }
   }
 }
+
+/*
+  ENTRANCES
+  ---------
+  Two full-screen sequences play over the app while it renders underneath: the
+  opening intro (components/Intro.tsx) and the sign-in welcome
+  (components/Welcome.tsx). The hand-over lives in lib/entrance.ts:
+  `entrance-hold` keeps the page out of sight, `entrance-reveal` lets it arrive
+  -- rising after the intro, dealt in 3D after sign-in -- and
+  `entrance-docking` hides the page's own mark until the flying one lands on
+  it. If a script never gets that far, the page shows itself after 8 seconds.
+*/
+@property --tooth {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@layer components {
+  .intro-paper-wrap {
+    filter: drop-shadow(0 0 0.5px var(--intro-edge)) drop-shadow(0 14px 22px var(--intro-shadow));
+  }
+
+  /* A torn receipt edge: triangular teeth cut out of the bottom by a mask. */
+  .intro-paper {
+    --tooth: 7px;
+    padding-bottom: calc(1rem + var(--tooth));
+    border-radius: 12px 12px 0 0;
+    -webkit-mask:
+      conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% 100% /
+        calc(2 * var(--tooth) + 0.01px) var(--tooth) repeat-x,
+      linear-gradient(#000 0 0) 0 0 / 100% calc(100% - var(--tooth) + 0.5px) no-repeat;
+    mask:
+      conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% 100% /
+        calc(2 * var(--tooth) + 0.01px) var(--tooth) repeat-x,
+      linear-gradient(#000 0 0) 0 0 / 100% calc(100% - var(--tooth) + 0.5px) no-repeat;
+  }
+
+  /*
+    The welcome's mark as a solid tile. Its thickness is a stack of rounded
+    layers behind the face; scaling the stack's Z flattens it back to the
+    two-dimensional mark before it lands. Radius is 2/7 of the side, as on
+    BrandMark.
+  */
+  .slab,
+  .slab-depth {
+    position: absolute;
+    inset: 0;
+    transform-style: preserve-3d;
+  }
+  .slab-layer,
+  .slab-face {
+    position: absolute;
+    inset: 0;
+    border-radius: 28.5714%;
+  }
+  .slab-face {
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    background: var(--brand);
+    color: var(--brand-ink);
+    backface-visibility: hidden;
+  }
+  .slab-sheen {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(115deg, transparent 30%, var(--slab-sheen) 50%, transparent 70%) 100% 0 / 300% 100% no-repeat;
+  }
+
+  /* A floor for the tile to fly over: a grid receding to a soft horizon. */
+  .welcome-floor {
+    position: absolute;
+    left: 50%;
+    bottom: -12vh;
+    width: 3200px;
+    height: 1800px;
+    margin-left: -1600px;
+    transform-origin: 50% 100%;
+    background-image:
+      linear-gradient(var(--floor-line) 1.5px, transparent 1.5px),
+      linear-gradient(90deg, var(--floor-line) 1.5px, transparent 1.5px);
+    background-size: 56px 56px;
+    background-position: center bottom;
+    -webkit-mask-image: radial-gradient(ellipse 40% 90% at 50% 100%, #000 30%, transparent 100%);
+    mask-image: radial-gradient(ellipse 40% 90% at 50% 100%, #000 30%, transparent 100%);
+  }
+
+  /* Each letter turns on its own baseline, like a split-flap display. */
+  .flip-letter {
+    display: inline-block;
+    transform-origin: 50% 100%;
+    backface-visibility: hidden;
+  }
+}
+
+:root {
+  --intro-edge: rgb(9 9 11 / 0.22);
+  --intro-shadow: rgb(9 9 11 / 0.08);
+  --slab-edge: #52525b;
+  --slab-edge-deep: #27272a;
+  --slab-sheen: rgb(255 255 255 / 0.32);
+  --floor-line: rgb(9 9 11 / 0.1);
+}
+.dark {
+  --intro-edge: rgb(250 250 250 / 0.2);
+  --intro-shadow: rgb(0 0 0 / 0.6);
+  --slab-edge: #a1a1aa;
+  --slab-edge-deep: #52525b;
+  --slab-sheen: rgb(9 9 11 / 0.1);
+  --floor-line: rgb(250 250 250 / 0.09);
+}
+
+html.entrance-hold #root {
+  opacity: 0;
+  animation: entrance-failsafe 0s 8s forwards;
+}
+html.entrance-docking [data-brand-mark] {
+  opacity: 0;
+}
+
+html.entrance-reveal header {
+  animation: entrance-fade 500ms ease-out backwards;
+}
+/*
+  Page content arrives in order: each child of <main> (or of a marked column),
+  and the children of a marked list inside it, one after another.
+*/
+html.entrance-reveal :is(main, [data-entrance-stagger]) > :not([data-entrance-stagger]) {
+  animation: entrance-rise 720ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  animation-delay: calc(var(--entrance-from, 60ms) + var(--entrance-i) * 70ms);
+}
+html.entrance-deal :is(main, [data-entrance-stagger]) > :not([data-entrance-stagger]) {
+  animation-name: entrance-deal;
+  animation-duration: 900ms;
+  transform-origin: 50% 0;
+}
+html.entrance-reveal main > [data-entrance-stagger] {
+  --entrance-from: calc(60ms + var(--entrance-i) * 70ms);
+}
+html.entrance-reveal :is(main, [data-entrance-stagger]) > * { --entrance-i: 0; }
+html.entrance-reveal :is(main, [data-entrance-stagger]) > :nth-child(2) { --entrance-i: 1; }
+html.entrance-reveal :is(main, [data-entrance-stagger]) > :nth-child(3) { --entrance-i: 2; }
+html.entrance-reveal :is(main, [data-entrance-stagger]) > :nth-child(4) { --entrance-i: 3; }
+html.entrance-reveal :is(main, [data-entrance-stagger]) > :nth-child(5) { --entrance-i: 4; }
+html.entrance-reveal :is(main, [data-entrance-stagger]) > :nth-child(6) { --entrance-i: 5; }
+html.entrance-reveal :is(main, [data-entrance-stagger]) > :nth-child(n + 7) { --entrance-i: 6; }
+
+@keyframes entrance-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+/* Hinged at the top edge, each block swings up from lying flat. */
+@keyframes entrance-deal {
+  from {
+    opacity: 0;
+    transform: perspective(900px) rotateX(-80deg);
+  }
+  40% {
+    opacity: 1;
+  }
+}
+@keyframes entrance-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes entrance-failsafe {
+  to {
+    opacity: 1;
+  }
+}

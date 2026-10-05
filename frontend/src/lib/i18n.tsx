@@ -344,6 +344,15 @@ const russian: Record<string, string> = {
   "How far the glows wander.": "Как далеко уходит свечение.",
   "Reset the look to its defaults": "Сбросить оформление",
   "Your own palettes are kept.": "Ваши палитры сохранятся.",
+  "Skip intro": "Пропустить",
+  "Welcome": "Добро пожаловать",
+  "Groceries": "Продукты",
+  "Chicken thighs": "Куриные бёдра",
+  "Oat milk": "Овсяное молоко",
+  "Napkins": "Салфетки",
+  "Andrey": "Андрей",
+  "Masha": "Маша",
+  "Dima": "Дима",
 };
 
 function interpolate(text: string, values?: Record<string, string | number>): string {

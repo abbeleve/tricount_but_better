@@ -4,6 +4,8 @@ import { LanguageProvider, useI18n } from "./lib/i18n";
 import { AppearanceProvider } from "./hooks/useAppearance";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
 import Appearance from "./pages/Appearance";
+import Intro from "./components/Intro";
+import Welcome from "./components/Welcome";
 import ExpenseForm from "./pages/ExpenseForm";
 import PlanForm from "./pages/PlanForm";
 import JoinTeam from "./pages/JoinTeam";
@@ -52,6 +54,8 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <Router>
         <LanguageProvider>
+          <Intro />
+          <Welcome />
           <AuthProvider>
             <AppearanceProvider>
               <Routes>

@@ -17,6 +17,7 @@ import {
 } from "../components/ui";
 import { keys, useServerConfig, useTeams } from "../hooks/queries";
 import { ApiError, api } from "../lib/api";
+import { useEntranceCount } from "../lib/entrance";
 import { personWord, useI18n } from "../lib/i18n";
 import { formatMoney } from "../lib/money";
 import type { TeamDetail, TeamSummary } from "../lib/types";
@@ -28,8 +29,10 @@ function balanceLabel(minor: number, t: (text: string) => string): string {
   return minor > 0 ? t("you are owed") : t("you owe");
 }
 
-function TeamCard({ team }: { team: TeamSummary }) {
+function TeamCard({ team, index }: { team: TeamSummary; index: number }) {
   const { t, language } = useI18n();
+  // Behind an entrance, balances count up as the card is dealt in.
+  const balance = useEntranceCount(team.my_balance, 260 + index * 70);
   return (
     <Link
       to={`/teams/${team.id}`}
@@ -45,7 +48,7 @@ function TeamCard({ team }: { team: TeamSummary }) {
         </p>
       </div>
       <div className="shrink-0 text-right">
-        <Money minor={team.my_balance} currency={team.currency} signed className="text-base font-medium" />
+        <Money minor={balance} currency={team.currency} signed className="text-base font-medium" />
         <p className="mt-0.5 text-[12px] text-muted">{balanceLabel(team.my_balance, t)}</p>
       </div>
     </Link>
@@ -176,9 +179,9 @@ export default function Teams() {
       )}
 
       {teams.data && teams.data.length > 0 && (
-        <div className="flex flex-col gap-3">
-          {teams.data.map((team) => (
-            <TeamCard key={team.id} team={team} />
+        <div className="flex flex-col gap-3" data-entrance-stagger>
+          {teams.data.map((team, index) => (
+            <TeamCard key={team.id} team={team} index={index} />
           ))}
         </div>
       )}
