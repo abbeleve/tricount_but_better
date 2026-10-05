@@ -4,6 +4,7 @@ import { AuthShell } from "../components/Layout";
 import { Button, Card, Field, FormError, Input } from "../components/ui";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError } from "../lib/api";
+import { playWelcome } from "../lib/entrance";
 import { useI18n } from "../lib/i18n";
 
 const MIN_PASSWORD = 10;
@@ -26,7 +27,7 @@ export default function Register() {
     setError(null);
     setBusy(true);
     try {
-      await register(email, name, password);
+      await register(email, name, password, (user) => playWelcome(user.display_name, false));
       navigate("/", { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not reach the server.");

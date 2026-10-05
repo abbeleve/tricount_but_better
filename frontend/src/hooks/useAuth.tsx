@@ -10,11 +10,17 @@ import {
 import { api, onLogout, signOut, tokenStore } from "../lib/api";
 import type { Tokens, User } from "../lib/types";
 
+/**
+ * Runs once the credentials are accepted and before the app switches to the
+ * signed-in screens -- the moment the sign-in welcome plays in.
+ */
+type BeforeEnter = (user: User) => Promise<void>;
+
 interface AuthValue {
   user: User | null;
   ready: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, displayName: string, password: string) => Promise<void>;
+  login: (email: string, password: string, beforeEnter?: BeforeEnter) => Promise<void>;
+  register: (email: string, displayName: string, password: string, beforeEnter?: BeforeEnter) => Promise<void>;
   logout: () => void;
 }
 
@@ -43,20 +49,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // A refresh failure anywhere in the app must drop the session everywhere.
   useEffect(() => onLogout(() => setUser(null)), []);
 
-  const finish = useCallback(async (tokens: Tokens) => {
+  const finish = useCallback(async (tokens: Tokens, beforeEnter?: BeforeEnter) => {
     tokenStore.save(tokens);
-    setUser(await api<User>("/auth/me"));
+    const me = await api<User>("/auth/me");
+    await beforeEnter?.(me);
+    setUser(me);
   }, []);
 
   const value = useMemo<AuthValue>(
     () => ({
       user,
       ready,
-      login: async (email, password) =>
-        finish(await api<Tokens>("/auth/login", { body: { email, password } })),
-      register: async (email, display_name, password) =>
+      login: async (email, password, beforeEnter) =>
+        finish(await api<Tokens>("/auth/login", { body: { email, password } }), beforeEnter),
+      register: async (email, display_name, password, beforeEnter) =>
         finish(
           await api<Tokens>("/auth/register", { body: { email, display_name, password } }),
+          beforeEnter,
         ),
       logout: () => {
         signOut();

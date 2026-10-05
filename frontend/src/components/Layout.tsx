@@ -161,14 +161,28 @@ export interface Back {
   label: string;
 }
 
+/**
+ * The mark: a receipt in three strokes. Its proportions scale with `size` and
+ * are mirrored in the intro, which lands its own copy exactly on top of this.
+ */
+function BrandMark({ size, className }: { size: number; className?: string }) {
+  return (
+    <span
+      data-brand-mark
+      className={cx("grid shrink-0 place-items-center bg-ink text-ink-text", className)}
+      style={{ width: size, height: size, borderRadius: (size * 2) / 7 }}
+    >
+      <svg viewBox="0 0 20 20" width={(size * 4) / 7} height={(size * 4) / 7} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+        <path d="M4 6h12M4 10h12M4 14h7" />
+      </svg>
+    </span>
+  );
+}
+
 function Brand({ className }: { className?: string }) {
   return (
     <Link to="/" className={cx("items-center gap-2.5 rounded-control", className)}>
-      <span className="grid size-7 place-items-center rounded-lg bg-ink text-ink-text">
-        <svg viewBox="0 0 20 20" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-          <path d="M4 6h12M4 10h12M4 14h7" />
-        </svg>
-      </span>
+      <BrandMark size={28} />
       <span className="text-[15px] font-semibold tracking-tight text-body">Split</span>
     </Link>
   );
@@ -257,13 +271,16 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="gutter grid min-h-dvh place-items-center bg-bg pb-[max(2.5rem,env(safe-area-inset-bottom))] pt-[max(2.5rem,env(safe-area-inset-top))]">
       <div className="w-full max-w-sm">
-        {children}
-        <div className="mt-5 flex justify-center gap-3 text-[13px] text-muted" role="group" aria-label={t("Language")}>
-          {(["en", "ru"] as const).map((code) => (
-            <button key={code} type="button" aria-pressed={language === code} onClick={() => setLanguage(code)} className={cx("rounded-control px-1 py-1 hover:text-body", language === code && "font-medium text-body")}>
-              {code === "en" ? "English" : "Русский"}
-            </button>
-          ))}
+        <BrandMark size={40} className="mb-6" />
+        <div data-entrance-stagger>
+          {children}
+          <div className="mt-5 flex justify-center gap-3 text-[13px] text-muted" role="group" aria-label={t("Language")}>
+            {(["en", "ru"] as const).map((code) => (
+              <button key={code} type="button" aria-pressed={language === code} onClick={() => setLanguage(code)} className={cx("rounded-control px-1 py-1 hover:text-body", language === code && "font-medium text-body")}>
+                {code === "en" ? "English" : "Русский"}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>

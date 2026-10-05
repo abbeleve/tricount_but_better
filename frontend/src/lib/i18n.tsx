@@ -291,6 +291,15 @@ const russian: Record<string, string> = {
   "Your session expired. Please sign in again.": "Сессия истекла. Войдите снова.",
   "Please sign in.": "Войдите в аккаунт.",
   "Something went wrong": "Произошла ошибка",
+  "Skip intro": "Пропустить",
+  "Welcome": "Добро пожаловать",
+  "Groceries": "Продукты",
+  "Chicken thighs": "Куриные бёдра",
+  "Oat milk": "Овсяное молоко",
+  "Napkins": "Салфетки",
+  "Andrey": "Андрей",
+  "Masha": "Маша",
+  "Dima": "Дима",
 };
 
 function interpolate(text: string, values?: Record<string, string | number>): string {

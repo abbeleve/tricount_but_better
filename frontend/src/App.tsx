@@ -2,6 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Navigate, Route, BrowserRouter as Router, Routes, useLocation } from "react-router-dom";
 import { LanguageProvider, useI18n } from "./lib/i18n";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
+import Intro from "./components/Intro";
+import Welcome from "./components/Welcome";
 import ExpenseForm from "./pages/ExpenseForm";
 import PlanForm from "./pages/PlanForm";
 import JoinTeam from "./pages/JoinTeam";
@@ -50,6 +52,8 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <Router>
         <LanguageProvider>
+          <Intro />
+          <Welcome />
           <AuthProvider>
             <Routes>
               <Route path="/login" element={<RedirectIfSignedIn><Login /></RedirectIfSignedIn>} />
