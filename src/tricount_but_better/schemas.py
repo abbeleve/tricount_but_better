@@ -15,7 +15,7 @@ from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints, model_validator
 
-from .models import ExpenseSource, ReceiptStatus, SplitMode, TeamRole
+from .models import ExpenseSource, NotificationKind, ReceiptStatus, SplitMode, TeamRole
 
 
 class ORMModel(BaseModel):
@@ -392,6 +392,58 @@ class SettlementOut(ORMModel):
     note: str
     settled_at: date
     created_at: datetime
+
+
+# ------------------------------------------------------------------ notifications
+
+
+class NotificationOut(BaseModel):
+    id: uuid.UUID
+    kind: NotificationKind
+    created_at: datetime
+    read: bool
+    team_id: uuid.UUID
+    team_name: str
+    actor_id: uuid.UUID | None
+    actor_name: str | None
+    expense_id: uuid.UUID | None
+    # Snapshot of the expense as it was added; amounts in minor units.
+    title: str
+    total: int
+    currency: str
+    share: int = Field(description="The recipient's part of the total; 0 if not in on it.")
+
+
+class NotificationListOut(BaseModel):
+    items: list[NotificationOut]
+    unread_count: int
+
+
+class NotificationsRead(BaseModel):
+    """Mark these as read, or everything when ``ids`` is left out."""
+
+    ids: list[uuid.UUID] | None = Field(default=None, max_length=500)
+
+
+class UnreadOut(BaseModel):
+    unread_count: int
+
+
+class PushKeys(BaseModel):
+    p256dh: str = Field(min_length=1, max_length=255)
+    auth: str = Field(min_length=1, max_length=255)
+
+
+class PushSubscriptionIn(BaseModel):
+    """The browser's ``PushSubscription.toJSON()``, plus the language to write in."""
+
+    endpoint: str = Field(min_length=1, max_length=2048)
+    keys: PushKeys
+    language: Literal["en", "ru"] = "en"
+
+
+class PushSubscriptionRemove(BaseModel):
+    endpoint: str = Field(min_length=1, max_length=2048)
 
 
 # ----------------------------------------------------------------------- receipts

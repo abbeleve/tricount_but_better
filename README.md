@@ -23,6 +23,13 @@ Photograph the receipt, and a vision model reads it into editable line items.
 - **Planned purchases** — keep a shopping list with optional prices. Finish the
   purchase through the expense form; plans do not affect balances.
 - **Team categories** — any member can create shared categories from the Categories tab or while entering an expense or planned purchase, with an optional emoji and a spending breakdown.
+- **Notifications** — when someone adds an expense (or finishes a planned
+  purchase), everyone else in the team hears about it: who added what, the
+  total, and their own share. A bell in the header counts what is unread; the
+  Notifications page lists it and marks it read. Turn on **Push notifications**
+  there to get them on the phone's lock screen too — opt-in per device, written
+  in the language that device uses, and tapping one opens the expense. On iPhone
+  and iPad, push needs the app added to the Home Screen first (iOS 16.4+).
 - Works on a phone and on a desktop; light and dark. English and Russian can be selected from the account menu (or on the sign-in screen). The home screen shows how much you owe across teams, separated by currency.
 - **Glass design (optional)** — frosted, translucent panels over a soft backdrop
   of coloured glows, switched on under **Appearance** in the account menu. Pick
@@ -138,14 +145,17 @@ src/tricount_but_better/
 ├── money.py        minor-unit arithmetic and the split algorithm
 ├── balances.py     net positions and debt simplification
 ├── services.py     keeps sum(shares) == total on every write
+├── notifications.py  who hears about a new expense, and push delivery
+├── webpush.py      Web Push: VAPID signing and aes128gcm encryption (RFC 8291/8292)
 ├── models.py       SQLAlchemy schema
 ├── images.py       in-memory validation, EXIF stripping, re-encoding
-├── routers/        auth, teams, invites, categories, expenses, plans, receipts
+├── routers/        auth, teams, invites, categories, expenses, plans, receipts, notifications
 └── vlm/            the receipt parser — schema, prompt, Polza provider
 frontend/src/
 ├── lib/            API client, money formatting (mirrors money.py), glass palettes
 ├── components/     UI primitives, charts, team tabs, receipt scanner, glass backdrop
-├── pages/          login, register, teams, team detail, expense and plan forms, appearance
+├── pages/          login, register, teams, team detail, expense and plan forms, appearance,
+│                   notifications
 ├── index.css       design tokens
 └── glass.css       the optional glass look: retunes those tokens from a palette
 ```

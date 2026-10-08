@@ -89,7 +89,30 @@ synthetic receipt. If that prints line items, the whole path works.
 
 ---
 
-## 3. GitHub Actions
+## 3. Push notifications
+
+Nothing to configure. The VAPID key that signs push messages is derived from
+`JWT_SECRET`, so it is stable across restarts and deploys; the contact address
+push services see defaults to the first `https://` entry in `CORS_ORIGINS`.
+
+The server needs outbound HTTPS to the browsers' push services:
+`fcm.googleapis.com` (Chrome, Android, Yandex, Samsung), `*.push.apple.com`
+(Safari and iOS Home Screen apps), `*.push.services.mozilla.com` (Firefox) and
+`*.notify.windows.com` (Edge on Windows). The app refuses to register endpoints
+anywhere else. Delivery problems are logged as `push to <host> failed` /
+`rejected` in `journalctl -u tricount`; in-app notifications never depend on
+push working.
+
+Push only works over HTTPS (or `localhost`), so it starts working once
+Certbot has run. To rotate the push key without touching `JWT_SECRET`, set
+`VAPID_PRIVATE_KEY` (a base64url P-256 private key, e.g. from
+`npx web-push generate-vapid-keys`). Rotating either one invalidates existing
+browser subscriptions; each device quietly resubscribes the next time the app
+is opened.
+
+---
+
+## 4. GitHub Actions
 
 `ci.yml` runs on every push and pull request: ruff, pytest, an
 `alembic check` that fails if a model changed without a migration, plus
@@ -157,7 +180,7 @@ on the server; deploys never rewrite either.
 
 ---
 
-## 4. Day to day
+## 5. Day to day
 
 ```bash
 sudo systemctl status tricount

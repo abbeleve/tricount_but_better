@@ -9,6 +9,7 @@ import type {
   Expense,
   ExpenseList,
   Invite,
+  NotificationList,
   PlannedExpense,
   ServerConfig,
   Settlement,
@@ -32,6 +33,7 @@ export const keys = {
   plan: (id: string, pid: string) => ["team", id, "plan", pid] as const,
   settlements: (id: string) => ["team", id, "settlements"] as const,
   invites: (id: string) => ["team", id, "invites"] as const,
+  notifications: ["notifications"] as const,
 };
 
 export const useServerConfig = () =>
@@ -166,5 +168,44 @@ export function useDeleteSettlement(teamId: string) {
     mutationFn: (settlementId: string) =>
       api<void>(`/teams/${teamId}/settlements/${settlementId}`, { method: "DELETE" }),
     onSuccess: invalidate,
+  });
+}
+
+/**
+ * The signed-in user's notifications. Polled while the app is in front -- push
+ * also nudges it, but only on devices where push is switched on.
+ */
+export const useNotifications = (enabled = true) =>
+  useQuery({
+    queryKey: keys.notifications,
+    queryFn: ({ signal }) => api<NotificationList>("/notifications", { signal }),
+    enabled,
+    refetchInterval: 60_000,
+  });
+
+/** Marks these as read on the server, and in the cached list straight away. */
+export function useMarkNotificationsRead() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) =>
+      api<{ unread_count: number }>("/notifications/read", { body: { ids } }),
+    onMutate: (ids) => {
+      const read = new Set(ids);
+      client.setQueryData<NotificationList>(keys.notifications, (current) => {
+        if (!current) return current;
+        const newlyRead = current.items.filter((n) => !n.read && read.has(n.id)).length;
+        return {
+          items: current.items.map((n) => (read.has(n.id) ? { ...n, read: true } : n)),
+          unread_count: Math.max(0, current.unread_count - newlyRead),
+        };
+      });
+    },
+    onSuccess: ({ unread_count }) => {
+      client.setQueryData<NotificationList>(
+        keys.notifications,
+        (current) => current && { ...current, unread_count },
+      );
+    },
+    onError: () => client.invalidateQueries({ queryKey: keys.notifications }),
   });
 }

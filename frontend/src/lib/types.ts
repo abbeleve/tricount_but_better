@@ -192,4 +192,31 @@ export interface ServerConfig {
   default_currency: string;
   max_receipt_images: number;
   max_upload_mb: number;
+  /** VAPID key to subscribe to push with; absent on servers without push. */
+  push_public_key?: string;
+}
+
+export type NotificationKind = "expense_created";
+
+export interface AppNotification {
+  id: string;
+  kind: NotificationKind;
+  created_at: string;
+  read: boolean;
+  team_id: string;
+  team_name: string;
+  actor_id: string | null;
+  actor_name: string | null;
+  expense_id: string | null;
+  /** Snapshot of the expense as it was added. */
+  title: string;
+  total: number;
+  currency: string;
+  /** The reader's part of the total; 0 when they were not in on it. */
+  share: number;
+}
+
+export interface NotificationList {
+  items: AppNotification[];
+  unread_count: number;
 }

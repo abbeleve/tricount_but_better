@@ -46,6 +46,15 @@ class Settings(BaseSettings):
     polza_api_key: str | None = None
     polza_api_key_file: Path = Path(".secrets/polza_api_key")
 
+    # --- web push ---
+    # The VAPID key that signs push requests. Unset, it is derived from
+    # JWT_SECRET, so a deployment gets working push without a new secret; set it
+    # (a base64url P-256 private scalar) only to rotate it independently.
+    vapid_private_key: str | None = None
+    # Who push services contact about abuse. Unset, the first https CORS origin.
+    vapid_subject: str | None = None
+    push_timeout_seconds: float = 10.0
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _split_origins(cls, v: object) -> object:
@@ -65,6 +74,13 @@ class Settings(BaseSettings):
             return self.polza_api_key_file.read_text(encoding="utf-8").strip() or None
         except OSError:
             return None
+
+    @property
+    def effective_vapid_subject(self) -> str:
+        if self.vapid_subject:
+            return self.vapid_subject
+        origin = next((o for o in self.cors_origins if o.startswith("https://")), None)
+        return origin or "mailto:push@tricount.invalid"
 
 
 @lru_cache

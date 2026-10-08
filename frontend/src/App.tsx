@@ -5,11 +5,13 @@ import { AppearanceProvider } from "./hooks/useAppearance";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
 import Appearance from "./pages/Appearance";
 import Intro from "./components/Intro";
+import { NotificationBridge } from "./components/NotificationBridge";
 import Welcome from "./components/Welcome";
 import ExpenseForm from "./pages/ExpenseForm";
 import PlanForm from "./pages/PlanForm";
 import JoinTeam from "./pages/JoinTeam";
 import Login from "./pages/Login";
+import Notifications from "./pages/Notifications";
 import Register from "./pages/Register";
 import TeamDetail from "./pages/TeamDetail";
 import Teams from "./pages/Teams";
@@ -58,6 +60,7 @@ export default function App() {
           <Welcome />
           <AuthProvider>
             <AppearanceProvider>
+              <NotificationBridge />
               <Routes>
                 <Route path="/login" element={<RedirectIfSignedIn><Login /></RedirectIfSignedIn>} />
                 <Route path="/register" element={<RedirectIfSignedIn><Register /></RedirectIfSignedIn>} />
@@ -75,6 +78,7 @@ export default function App() {
                 />
                 <Route path="/join/:code" element={<RequireAuth><JoinTeam /></RequireAuth>} />
                 <Route path="/appearance" element={<RequireAuth><Appearance /></RequireAuth>} />
+                <Route path="/notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </AppearanceProvider>

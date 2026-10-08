@@ -13,11 +13,13 @@ from .routers import (
     categories,
     expenses,
     invites,
+    notifications,
     planned_expenses,
     receipts,
     spending,
     teams,
 )
+from .webpush import vapid_key
 
 logging.basicConfig(level=logging.INFO)
 
@@ -47,6 +49,7 @@ def create_app() -> FastAPI:
         spending.router,
         planned_expenses.router,
         receipts.router,
+        notifications.router,
     ):
         app.include_router(router, prefix="/api")
 
@@ -62,6 +65,8 @@ def create_app() -> FastAPI:
             "default_currency": settings.default_currency,
             "max_receipt_images": settings.max_receipt_images,
             "max_upload_mb": settings.max_upload_mb,
+            # The applicationServerKey a browser subscribes to push with.
+            "push_public_key": vapid_key(settings).public_key,
         }
 
     return app

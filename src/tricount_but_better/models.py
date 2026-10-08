@@ -65,6 +65,10 @@ class ReceiptStatus(enum.StrEnum):
     failed = "failed"
 
 
+class NotificationKind(enum.StrEnum):
+    expense_created = "expense_created"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -306,6 +310,56 @@ class Settlement(Base):
     currency: Mapped[str] = mapped_column(String(3))
     note: Mapped[str] = mapped_column(Text, default="")
     settled_at: Mapped[date] = mapped_column(Date)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Notification(Base):
+    """News for one member about something another member did in a team.
+
+    ``data`` is a snapshot taken when it happened (an expense's title, total and
+    the recipient's share), so it reads the same after the expense is edited.
+    Deleting the expense deletes its notifications: a link to nothing is noise.
+    """
+
+    __tablename__ = "notifications"
+    __table_args__ = (Index("ix_notification_user_created", "user_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("teams.id", ondelete="CASCADE"), index=True
+    )
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    expense_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("expenses.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[NotificationKind] = mapped_column(String(32))
+    data: Mapped[dict] = mapped_column(JSON)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    team: Mapped[Team] = relationship()
+    actor: Mapped[User | None] = relationship(foreign_keys=[actor_id])
+
+
+class PushSubscription(Base):
+    """One browser's Web Push endpoint, delivering one user's notifications.
+
+    The endpoint is unique: when someone else signs in on the same browser and
+    turns notifications on, the row moves to them instead of being duplicated.
+    """
+
+    __tablename__ = "push_subscriptions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    endpoint: Mapped[str] = mapped_column(String(2048), unique=True)
+    p256dh: Mapped[str] = mapped_column(String(255))
+    auth: Mapped[str] = mapped_column(String(255))
+    # The language this device shows the app in; push text is written in it.
+    language: Mapped[str] = mapped_column(String(8), default="en")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 

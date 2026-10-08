@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
 
@@ -19,6 +19,7 @@ from ..models import (
     SplitMode,
     TeamMember,
 )
+from ..notifications import deliver_push, notify_expense_created
 from ..schemas import (
     ExpenseCreate,
     ExpenseItemOut,
@@ -187,6 +188,7 @@ def create_expense(
     team: TeamDep,
     user: CurrentUser,
     session: DbSession,
+    background: BackgroundTasks,
 ) -> ExpenseOut:
     if payload.receipt_id is not None:
         receipt = session.get(Receipt, payload.receipt_id)
@@ -203,7 +205,9 @@ def create_expense(
     )
     _apply(session, expense, payload, _member_ids(session, team.id), team.id)
     session.add(expense)
+    notifications = notify_expense_created(session, expense, user)
     session.commit()
+    background.add_task(deliver_push, [n.id for n in notifications])
     return _serialise(expense)
 
 

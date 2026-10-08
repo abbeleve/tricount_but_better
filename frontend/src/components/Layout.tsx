@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useNotifications } from "../hooks/queries";
 import { useAppearance } from "../hooks/useAppearance";
 import { useAuth } from "../hooks/useAuth";
 import { swatch } from "../lib/glass";
@@ -175,6 +176,52 @@ function AccountMenu({ theme }: { theme: Theme }) {
   );
 }
 
+/** Unread news from the team; the page it opens marks it read. */
+function NotificationBell() {
+  const { user } = useAuth();
+  const { t } = useI18n();
+  const location = useLocation();
+  const notifications = useNotifications(Boolean(user));
+  if (!user) return null;
+
+  const unread = notifications.data?.unread_count ?? 0;
+  const here = location.pathname === "/notifications";
+  return (
+    <Link
+      to="/notifications"
+      // Remembered, so the page's back button returns here.
+      state={here ? location.state : { from: location.pathname + location.search }}
+      replace={here}
+      aria-label={unread ? t("Notifications, {count} unread", { count: unread }) : t("Notifications")}
+      aria-current={here ? "page" : undefined}
+      className={cx(
+        "relative grid size-9 place-items-center rounded-button text-muted pointer-coarse:size-11",
+        "transition-colors hover:bg-surface-2 hover:text-body active:bg-surface-2 active:duration-0",
+        here && "text-body",
+      )}
+    >
+      <svg viewBox="0 0 20 20" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M5 8a5 5 0 0 1 10 0c0 4 1.5 5.5 1.5 5.5h-13S5 12 5 8Z" />
+        <path d="M8.5 16.5a1.6 1.6 0 0 0 3 0" />
+      </svg>
+      {unread > 0 && (
+        <span
+          aria-hidden="true"
+          className={cx(
+            // Starts just right of the bell's centre line, so it sits on its shoulder
+            // at either button size instead of covering the bell.
+            "absolute left-1/2 top-1 ml-1 grid h-4.5 min-w-4.5 place-items-center rounded-full px-1",
+            "bg-danger text-[11px] font-semibold leading-none text-bg tabular ring-2 ring-bg",
+            "transition duration-200 ease-out starting:scale-50 starting:opacity-0",
+          )}
+        >
+          {unread > 99 ? "99+" : unread}
+        </span>
+      )}
+    </Link>
+  );
+}
+
 export interface Back {
   to: string;
   label: string;
@@ -241,6 +288,7 @@ export function Header({ back }: { back?: Back }) {
         )}
         <div className="flex shrink-0 items-center gap-1">
           <ThemeToggle theme={theme} className="hidden sm:grid" />
+          <NotificationBell />
           <AccountMenu theme={theme} />
         </div>
       </div>

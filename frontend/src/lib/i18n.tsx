@@ -353,6 +353,22 @@ const russian: Record<string, string> = {
   "Andrey": "Андрей",
   "Masha": "Маша",
   "Dima": "Дима",
+  "Notifications": "Уведомления",
+  "Notifications, {count} unread": "Уведомления, непрочитанных: {count}",
+  "What the people you share with have added.": "Что добавили те, с кем вы делите расходы.",
+  "{name} added “{title}”": "{name}: новый расход «{title}»",
+  "your share {amount}": "ваша доля {amount}",
+  "New": "Новое",
+  "No notifications yet": "Уведомлений пока нет",
+  "When someone in your teams adds an expense, it shows up here.": "Когда кто-то из ваших групп добавит расход, он появится здесь.",
+  "Could not load notifications.": "Не удалось загрузить уведомления.",
+  "Push notifications": "Push-уведомления",
+  "This device gets a notification when someone adds an expense.": "Это устройство получает уведомление, когда кто-то добавляет расход.",
+  "Get a notification on this device when someone adds an expense.": "Получайте уведомление на этом устройстве, когда кто-то добавляет расход.",
+  "Notifications are blocked for this site. Allow them in your browser settings, then come back.": "Уведомления для этого сайта заблокированы. Разрешите их в настройках браузера и вернитесь сюда.",
+  "On iPhone and iPad, add Split to your Home Screen first: tap Share, then “Add to Home Screen”, and open it from there.": "На iPhone и iPad сначала добавьте Split на экран «Домой»: нажмите «Поделиться» → «На экран „Домой“» и откройте приложение оттуда.",
+  "This browser cannot show notifications. New ones still appear on this page.": "Этот браузер не показывает уведомления. Новые всё равно появятся на этой странице.",
+  "Could not turn on notifications. Try again.": "Не удалось включить уведомления. Попробуйте ещё раз.",
 };
 
 function interpolate(text: string, values?: Record<string, string | number>): string {
