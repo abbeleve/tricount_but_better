@@ -13,6 +13,33 @@ from decimal import Decimal, InvalidOperation
 
 from pydantic import BaseModel, Field, field_validator
 
+# A good described in levels, general to specific. Shared by receipts and price
+# lists, and placed right after the printed name: the model writes the levels
+# before the readable name, so the name follows from them.
+LEVEL_PROPERTIES: dict = {
+    "kind": {
+        "type": ["string", "null"],
+        "description": "What the good is, generic and lower case: 'хлеб', 'бананы'.",
+    },
+    "variety": {
+        "type": ["string", "null"],
+        "description": "Type, flavour, fat %, colour, cut or purpose within the kind.",
+    },
+    "brand": {
+        "type": ["string", "null"],
+        "description": "Brand or producer, written out in full; null if not printed.",
+    },
+    "size_amount": {
+        "type": ["string", "null"],
+        "description": "Pack size as a decimal string, e.g. '350' or '0.93'; null if none.",
+    },
+    "size_unit": {
+        "type": ["string", "null"],
+        "description": "Unit of the pack size: g, kg, ml, l or pcs.",
+    },
+    "by_weight": {"type": "boolean", "description": "Sold by weight, priced per kilogram."},
+}
+
 RECEIPT_JSON_SCHEMA: dict = {
     "type": "object",
     "additionalProperties": False,
@@ -65,6 +92,7 @@ RECEIPT_JSON_SCHEMA: dict = {
                 "additionalProperties": False,
                 "required": [
                     "name",
+                    *LEVEL_PROPERTIES,
                     "quantity",
                     "unit_price",
                     "total",
@@ -78,6 +106,7 @@ RECEIPT_JSON_SCHEMA: dict = {
                         "type": "string",
                         "description": "Product name as printed, original language.",
                     },
+                    **LEVEL_PROPERTIES,
                     "product_name": {
                         "type": ["string", "null"],
                         "description": (
@@ -152,7 +181,37 @@ def _text(v: object) -> object:
     return text or None
 
 
-class ParsedItem(BaseModel):
+def _flag(v: object) -> bool:
+    return v is True or (isinstance(v, str) and v.strip().lower() == "true")
+
+
+class ParsedLevels(BaseModel):
+    """The levels the model wrote for one good; ``catalog.levels_from`` checks them."""
+
+    kind: str | None = None
+    variety: str | None = None
+    brand: str | None = None
+    size_amount: Decimal | None = None
+    size_unit: str | None = None
+    by_weight: bool = False
+
+    @field_validator("kind", "variety", "brand", "size_unit", mode="before")
+    @classmethod
+    def _coerce_level(cls, v: object) -> object:
+        return _text(v)
+
+    @field_validator("size_amount", mode="before")
+    @classmethod
+    def _coerce_size(cls, v: object) -> object:
+        return _to_decimal(v)
+
+    @field_validator("by_weight", mode="before")
+    @classmethod
+    def _coerce_weighed(cls, v: object) -> object:
+        return _flag(v)
+
+
+class ParsedItem(ParsedLevels):
     name: str
     quantity: Decimal | None = None
     unit_price: Decimal | None = None
@@ -175,7 +234,7 @@ class ParsedItem(BaseModel):
     @field_validator("discounted", mode="before")
     @classmethod
     def _coerce_flag(cls, v: object) -> object:
-        return v is True or (isinstance(v, str) and v.strip().lower() == "true")
+        return _flag(v)
 
 
 class ParsedReceipt(BaseModel):
@@ -257,6 +316,7 @@ PRICE_LIST_JSON_SCHEMA: dict = {
                 "additionalProperties": False,
                 "required": [
                     "name",
+                    *LEVEL_PROPERTIES,
                     "product_name",
                     "product_id",
                     "price",
@@ -265,6 +325,7 @@ PRICE_LIST_JSON_SCHEMA: dict = {
                 ],
                 "properties": {
                     "name": {"type": "string", "description": "Product name as shown."},
+                    **LEVEL_PROPERTIES,
                     "product_name": {
                         "type": ["string", "null"],
                         "description": "Readable shopping-list name: brand, variety, pack size.",
@@ -310,7 +371,7 @@ def _to_date(value: object) -> date | None:
         return None
 
 
-class ParsedPrice(BaseModel):
+class ParsedPrice(ParsedLevels):
     name: str
     product_name: str | None = None
     product_id: str | None = None

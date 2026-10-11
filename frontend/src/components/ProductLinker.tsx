@@ -2,15 +2,15 @@ import { useId, useState } from "react";
 import { useProducts } from "../hooks/queries";
 import { useI18n } from "../lib/i18n";
 import { formatMoney } from "../lib/money";
-import type { Product } from "../lib/types";
+import type { Product, ProductMatch } from "../lib/types";
 import { Button, Input, cx } from "./ui";
 
 export interface ProductLink {
   productId?: string;
   /** Name for a new product when none is linked; the model's readable name. */
   productName?: string;
-  /** "model" and "name" matches are suggestions, worth a second look. */
-  productMatch?: "receipt" | "model" | "name" | null;
+  /** Anything but a "receipt" match is a suggestion, worth a second look. */
+  productMatch?: ProductMatch | null;
   track: boolean;
 }
 
@@ -56,7 +56,7 @@ export function ProductLinker({
   ) : link.productId ? (
     <>
       <span className="truncate text-body">{product?.name ?? t("Linked product")}</span>
-      {(link.productMatch === "model" || link.productMatch === "name") && (
+      {link.productMatch && link.productMatch !== "receipt" && (
         <span className="shrink-0 rounded-full bg-surface-2 px-1.5 text-[11px] text-muted">{t("suggested")}</span>
       )}
     </>

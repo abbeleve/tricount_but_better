@@ -21,6 +21,7 @@ from __future__ import annotations
 import re
 import unicodedata
 import uuid
+from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -43,9 +44,17 @@ _LEGAL_FORMS = frozenset(
 )
 _WORD = re.compile(r"[^\W_]+")  # letters and digits, in any script
 
+# What a till prints in front of a good that is not part of it. A marked good
+# carries a code-check tag -- "[M+]", "[M-]" or "[M]", with a Latin or Cyrillic
+# M -- often followed by digits of that pack's own code, which differ for every
+# pack: three packs of one good would otherwise be three goods. Some chains
+# print a long article number first.
+_MARK = re.compile(r"^\s*\[\s*[MМ]\s*[+\-]?\s*\]\s*(?:\d{3,}\s+)?", re.IGNORECASE)
+_ARTICLE = re.compile(r"^\s*\d{5,}\s+")
 
-def name_key(text: str) -> str:
-    """The comparison form of a name: case, punctuation and "ё" no longer matter.
+
+def _fold(text: str) -> str:
+    """Case, punctuation and "ё" no longer matter.
 
     Computed in Python rather than with SQL ``lower()``, which folds only ASCII
     in SQLite -- "Молоко" and "молоко" would otherwise be two products.
@@ -54,13 +63,25 @@ def name_key(text: str) -> str:
     return " ".join(_WORD.findall(folded))[:200]
 
 
+def strip_codes(text: str) -> str:
+    """A printed name without the marking tag or article number in front of it."""
+    return _ARTICLE.sub("", _MARK.sub("", text, count=1), count=1).strip()
+
+
+def name_key(text: str) -> str:
+    """The comparison form of a good's name: case, punctuation, "ё" and the
+    codes a till prints in front of it no longer matter."""
+    return _fold(strip_codes(text))
+
+
 def shop_key(text: str) -> str:
-    """``name_key`` without legal forms: 'ООО "Агроторг"' compares as 'агроторг'.
+    """The comparison form of a shop's name, without legal forms:
+    'ООО "Агроторг"' compares as 'агроторг'.
 
     Taken over the first 120 characters, the length an alias is stored at, so a
     long printed name still matches the alias it was saved as.
     """
-    return " ".join(w for w in name_key(text.strip()[:120]).split() if w not in _LEGAL_FORMS)
+    return " ".join(w for w in _fold(text.strip()[:120]).split() if w not in _LEGAL_FORMS)
 
 
 def paid_per_unit(total: int, quantity: Decimal) -> int:
@@ -143,28 +164,30 @@ def products_by_key(
 
 def product_name_for(shown: str, readable: str | None) -> str:
     """The name for a new product: the readable one when it has any letters or
-    digits, else the name as printed. A readable name of "-" or "..." would
-    otherwise give an empty key, and every such line would share one product."""
+    digits, else the name as printed without its codes. A readable name of "-"
+    or "..." would otherwise give an empty key, and every such line would share
+    one product."""
     readable = (readable or "").strip()
-    return readable[:200] if name_key(readable) else shown.strip()[:200]
+    return readable[:200] if name_key(readable) else strip_codes(shown)[:200]
 
 
 def link_products(
     session: Session,
     team_id: uuid.UUID,
     shop_id: uuid.UUID,
-    lines: list[tuple[str, uuid.UUID | None, str | None]],
+    lines: list[tuple[str, uuid.UUID | None, str | None, Levels | None]],
 ) -> list[uuid.UUID]:
-    """The product for each (name as printed, product chosen, readable name).
+    """The product for each (name as printed, product chosen, readable name, levels).
 
     A chosen product wins; otherwise how this shop printed the name before,
     then a product of the same name, and failing all three a new product.
     Each printed name is remembered for the shop, so the latest link wins and
-    re-linking a line by hand corrects it for next time. Lines whose printed
-    name has no letters or digits must be filtered out by the caller.
+    re-linking a line by hand corrects it for next time. A product without
+    levels takes the line's. Lines whose printed name has no letters or digits
+    must be filtered out by the caller.
     """
-    keys = [name_key(shown) for shown, _, _ in lines]
-    wanted = [product_name_for(shown, readable) for shown, _, readable in lines]
+    keys = [name_key(shown) for shown, _, _, _ in lines]
+    wanted = [product_name_for(shown, readable) for shown, _, readable, _ in lines]
     by_name = products_by_key(session, team_id, wanted)
     aliases = {
         alias.key: alias
@@ -173,7 +196,7 @@ def link_products(
         )
     }
     linked: list[uuid.UUID] = []
-    for (shown, chosen, _), key, name in zip(lines, keys, wanted, strict=True):
+    for (shown, chosen, _, _), key, name in zip(lines, keys, wanted, strict=True):
         product_id = chosen or (aliases[key].product_id if key in aliases else None)
         product_id = product_id or by_name.get(name_key(name))
         if product_id is None:
@@ -186,6 +209,21 @@ def link_products(
         alias.product_id = product_id
         alias.name = shown[:200]
         linked.append(product_id)
+
+    described = [
+        (product_id, levels)
+        for (*_, levels), product_id in zip(lines, linked, strict=True)
+        if levels is not None
+    ]
+    if described:
+        products = {
+            product.id: product
+            for product in session.scalars(
+                select(Product).where(Product.id.in_({product_id for product_id, _ in described}))
+            )
+        }
+        for product_id, levels in described:
+            describe(products[product_id], levels)
     return linked
 
 
@@ -197,6 +235,164 @@ def get_or_create_product(session: Session, team_id: uuid.UUID, name: str) -> Pr
         session.add(product)
         session.flush()
     return product
+
+
+# --------------------------------------------------------------------- levels
+
+# Pack sizes compare in one unit per dimension: 0,93 л and 930 мл are one size.
+_UNITS: dict[str, tuple[str, int]] = {
+    "g": ("g", 1),
+    "г": ("g", 1),
+    "гр": ("g", 1),
+    "kg": ("g", 1000),
+    "кг": ("g", 1000),
+    "ml": ("ml", 1),
+    "мл": ("ml", 1),
+    "l": ("ml", 1000),
+    "л": ("ml", 1000),
+    "pcs": ("pcs", 1),
+    "шт": ("pcs", 1),
+}
+_MAX_SIZE = Decimal("999999999")
+
+
+@dataclass(frozen=True, slots=True)
+class Levels:
+    """A good described from general to specific: what it is, which one, whose,
+    and how big ("хлеб" / "белый нарезной" / no brand / 350 g).
+
+    Two lines a till printed differently -- a cut-off word, a code in front --
+    still describe the same good the same way, so the levels match goods when
+    the printed names do not.
+    """
+
+    kind: str
+    variety: str | None = None
+    brand: str | None = None
+    size: Decimal | None = None
+    unit: str | None = None  # "g", "ml" or "pcs"
+    by_weight: bool = False
+
+
+def _words(text: str | None) -> frozenset[str]:
+    return frozenset(_fold(text or "").split())
+
+
+def kind_key(kind: str) -> str:
+    """The comparison form of a kind, in any word order: "салфетки влажные"
+    is "влажные салфетки"."""
+    return " ".join(sorted(_words(kind)))[:80]
+
+
+def _clip(text: str | None, limit: int) -> str | None:
+    text = (text or "").strip()[:limit].strip()
+    return text if _fold(text) else None
+
+
+def levels_from(
+    kind: str | None,
+    variety: str | None = None,
+    brand: str | None = None,
+    size: Decimal | None = None,
+    unit: str | None = None,
+    by_weight: bool = False,
+) -> Levels | None:
+    """Levels from what the model wrote or the app sent back, or None without a
+    kind to hang them on. Sizes come out in grams, millilitres or pieces; a
+    good sold by weight has none, since its weight is how much was bought."""
+    kind = _clip(kind, 80)
+    if kind is None:
+        return None
+    measure = _UNITS.get(_fold(unit or ""))
+    if by_weight or measure is None or size is None:
+        size, measure = None, None
+    else:
+        size = (size * measure[1]).quantize(Decimal("0.001"))
+        if not 0 < size <= _MAX_SIZE:
+            size, measure = None, None
+    return Levels(
+        kind=kind,
+        variety=_clip(variety, 120),
+        brand=_clip(brand, 80),
+        size=size,
+        unit=measure[0] if measure else None,
+        by_weight=by_weight,
+    )
+
+
+def levels_of(product: Product) -> Levels | None:
+    if not product.kind:
+        return None
+    return Levels(
+        kind=product.kind,
+        variety=product.variety,
+        brand=product.brand,
+        size=product.size,
+        unit=product.size_unit,
+        by_weight=product.by_weight,
+    )
+
+
+def same_good(a: Levels, b: Levels) -> bool:
+    """Whether two descriptions are one good: every level agrees, except that a
+    brand printed on only one of them does not count against it. A different
+    pack size is always a different good."""
+    return (
+        _words(a.kind) == _words(b.kind)
+        and _words(a.variety) == _words(b.variety)
+        and a.by_weight == b.by_weight
+        and (a.size, a.unit) == (b.size, b.unit)
+        and (not a.brand or not b.brand or _fold(a.brand) == _fold(b.brand))
+    )
+
+
+def products_by_levels(
+    session: Session, team_id: uuid.UUID, wanted: list[Levels | None]
+) -> list[uuid.UUID | None]:
+    """The one product each description fits, or None when none or several do.
+
+    Several fit when only a brand tells them apart and this line prints none.
+    Guessing between them would mix two goods' prices, so a person picks.
+    """
+    keys = {kind_key(levels.kind) for levels in wanted if levels is not None}
+    if not keys:
+        return [None] * len(wanted)
+    by_kind: dict[str, list[Product]] = defaultdict(list)
+    for product in session.scalars(
+        select(Product).where(Product.team_id == team_id, Product.kind_key.in_(keys))
+    ):
+        by_kind[product.kind_key or ""].append(product)
+    found: list[uuid.UUID | None] = []
+    for levels in wanted:
+        fits = []
+        if levels is not None:
+            for product in by_kind[kind_key(levels.kind)]:
+                known = levels_of(product)
+                if known is not None and same_good(levels, known):
+                    fits.append(product)
+        if len(fits) > 1 and levels is not None and levels.brand:
+            brand = _fold(levels.brand)
+            fits = [product for product in fits if _fold(product.brand or "") == brand]
+        found.append(fits[0].id if len(fits) == 1 else None)
+    return found
+
+
+def describe(product: Product, levels: Levels | None) -> None:
+    """Give a product its levels the first time a line describes it.
+
+    Goods made before levels existed, or by hand, get them from the next line
+    linked to them. They are not rewritten after that, so one odd reading
+    cannot move a good away from the lines it already matches.
+    """
+    if levels is None or product.kind:
+        return
+    product.kind = levels.kind
+    product.kind_key = kind_key(levels.kind)
+    product.variety = levels.variety
+    product.brand = levels.brand
+    product.size = levels.size
+    product.size_unit = levels.unit
+    product.by_weight = levels.by_weight
 
 
 # --------------------------------------------------------------- price review

@@ -43,6 +43,9 @@ class ScanHints:
 
     shops: list[KnownShop] = field(default_factory=list)
     products: list[KnownProduct] = field(default_factory=list)
+    # Kinds of goods the team's products already have ("хлеб", "молоко"), so
+    # the model reuses a word instead of coining a synonym the levels miss.
+    kinds: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)

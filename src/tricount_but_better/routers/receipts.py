@@ -6,22 +6,29 @@ import base64
 import binascii
 import re
 import uuid
-from typing import Literal
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..catalog import alias_products, find_shop, name_key, products_by_key
+from ..catalog import (
+    Levels,
+    alias_products,
+    find_shop,
+    levels_from,
+    name_key,
+    products_by_key,
+    products_by_levels,
+)
 from ..config import get_settings
 from ..deps import DbSession, Membership, TeamDep
 from ..images import ImageError, normalise_image
 from ..models import Expense, ExpenseItem, Product, Shop, Team
 from ..money import MoneyError, to_minor
-from ..schemas import ParsedItemOut, ReceiptScanOut, ShopMatchOut
+from ..schemas import ParsedItemOut, ProductLevels, ProductMatch, ReceiptScanOut, ShopMatchOut
 from ..vlm import KnownProduct, KnownShop, ScanHints, VlmError, VlmUnavailable, get_parser
-from ..vlm.schema import ParsedReceipt
+from ..vlm.schema import ParsedLevels, ParsedReceipt
 
 router = APIRouter(prefix="/teams/{team_id}/receipts", tags=["receipts"])
 _DATA_URL = re.compile(r"^data:image/[\w.+-]+;base64,([A-Za-z0-9+/=]+)$")
@@ -32,7 +39,8 @@ class ReceiptScanIn(BaseModel):
 
 
 class ScanCatalog:
-    """The team's shops and recent goods, with the short refs the model sees.
+    """The team's shops, recent goods and kinds of goods, with the short refs the
+    model sees.
 
     Shared by receipt and price-list scans: the same hints go to the model, and
     its answer is matched back the same way.
@@ -51,6 +59,14 @@ class ScanCatalog:
             .order_by(func.max(Expense.spent_at).desc().nulls_last(), Product.name)
             .limit(limit)
         ).all()
+        # The commonest kinds first, should the list ever outgrow the limit.
+        kinds = session.scalars(
+            select(func.min(Product.kind))
+            .where(Product.team_id == team.id, Product.kind_key.is_not(None))
+            .group_by(Product.kind_key)
+            .order_by(func.count().desc(), func.min(Product.kind))
+            .limit(limit)
+        )
         self.shop_refs = {f"s{i}": shop for i, shop in enumerate(self.shops, 1)}
         self.product_refs = {f"p{i}": product_id for i, (product_id, _) in enumerate(recent, 1)}
         self.hints = ScanHints(
@@ -62,6 +78,7 @@ class ScanCatalog:
                 KnownProduct(ref=ref, name=name)
                 for ref, (_, name) in zip(self.product_refs, recent, strict=True)
             ],
+            kinds=list(kinds),
         )
 
     def shop(
@@ -88,20 +105,26 @@ class ScanCatalog:
         )
 
     def products(
-        self, lines: list[tuple[str, str | None, str | None]], shop_id: uuid.UUID | None
-    ) -> list[tuple[uuid.UUID | None, Literal["receipt", "model", "name"] | None]]:
-        """Each (name as printed, readable name, model's ref)'s product, by how
-        sure the match is: this shop printed the name that way before, the
-        model recognised it, or the names agree."""
-        names = [name for name, _, _ in lines]
+        self,
+        lines: list[tuple[str, str | None, str | None, Levels | None]],
+        shop_id: uuid.UUID | None,
+    ) -> list[tuple[uuid.UUID | None, ProductMatch | None]]:
+        """Each (name as printed, readable name, model's ref, levels)'s product,
+        by how sure the match is: this shop printed the name that way before, a
+        known good has the same levels, the model recognised it, or the names
+        agree."""
+        names = [name for name, _, _, _ in lines]
         by_alias = alias_products(self.session, shop_id, names) if shop_id else {}
+        by_levels = products_by_levels(self.session, self.team_id, [levels for *_, levels in lines])
         by_name = products_by_key(
-            self.session, self.team_id, [*names, *(readable or "" for _, readable, _ in lines)]
+            self.session, self.team_id, [*names, *(readable or "" for _, readable, _, _ in lines)]
         )
         matches: list = []
-        for name, readable, ref in lines:
+        for (name, readable, ref, _), same_levels in zip(lines, by_levels, strict=True):
             if found := by_alias.get(name_key(name)):
                 matches.append((found, "receipt"))
+            elif same_levels is not None:
+                matches.append((same_levels, "levels"))
             elif found := self.product_refs.get((ref or "").strip().lower()):
                 matches.append((found, "model"))
             elif found := by_name.get(name_key(readable or "")) or by_name.get(name_key(name)):
@@ -109,6 +132,12 @@ class ScanCatalog:
             else:
                 matches.append((None, None))
         return matches
+
+
+def parsed_levels(item: ParsedLevels) -> Levels | None:
+    return levels_from(
+        item.kind, item.variety, item.brand, item.size_amount, item.size_unit, item.by_weight
+    )
 
 
 def clip_text(text: str | None, limit: int) -> str | None:
@@ -152,11 +181,18 @@ def decode_images(data_urls: list[str], what: str = "receipt") -> list[bytes]:
 
 def _to_out(parsed: ParsedReceipt, currency: str, catalog: ScanCatalog) -> ReceiptScanOut:
     shop = catalog.shop(parsed.merchant, parsed.shop_name, parsed.shop_id, parsed.shop_address)
+    levels = [parsed_levels(item) for item in parsed.items]
     matches = catalog.products(
-        [(item.name, item.product_name, item.product_id) for item in parsed.items], shop.shop_id
+        [
+            (item.name, item.product_name, item.product_id, described)
+            for item, described in zip(parsed.items, levels, strict=True)
+        ],
+        shop.shop_id,
     )
     items = []
-    for item, (product_id, matched_by) in zip(parsed.items, matches, strict=True):
+    for item, described, (product_id, matched_by) in zip(
+        parsed.items, levels, matches, strict=True
+    ):
         try:
             total = to_minor(item.total, currency)
             unit_price = (
@@ -174,6 +210,7 @@ def _to_out(parsed: ParsedReceipt, currency: str, catalog: ScanCatalog) -> Recei
                 unit_price=unit_price,
                 total=total,
                 product_name=clip_text(item.product_name, 200),
+                levels=ProductLevels.of(described),
                 product_id=product_id,
                 product_match=matched_by,
                 on_sale=item.discounted,

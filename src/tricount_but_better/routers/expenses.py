@@ -9,7 +9,13 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
 
-from ..catalog import link_products, name_key, observation_for, record_observations
+from ..catalog import (
+    levels_from,
+    link_products,
+    name_key,
+    observation_for,
+    record_observations,
+)
 from ..deps import CurrentUser, DbSession, Membership, TeamDep
 from ..models import (
     Category,
@@ -190,7 +196,15 @@ def track_prices(
         session,
         expense.team_id,
         shop_id,
-        [(item.name, item.product_id, line.product_name) for item, line in lines],
+        [
+            (
+                item.name,
+                item.product_id,
+                line.product_name,
+                levels_from(**line.levels.model_dump()) if line.levels else None,
+            )
+            for item, line in lines
+        ],
     )
     for (item, _), product_id in zip(lines, linked, strict=True):
         item.product_id = product_id

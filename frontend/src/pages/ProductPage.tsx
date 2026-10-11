@@ -10,11 +10,11 @@ import {
 } from "../hooks/queries";
 import { ApiError } from "../lib/api";
 import { todayLocal } from "../lib/dates";
-import { useI18n } from "../lib/i18n";
+import { useI18n, type translate } from "../lib/i18n";
 import { formatMoney } from "../lib/money";
-import { formatPercent, shortDate } from "../lib/price-format";
+import { formatPackSize, formatPercent, shortDate } from "../lib/price-format";
 import { initialAnswers, priceSpread } from "../lib/prices";
-import type { PriceAnswer, ProductDetail } from "../lib/types";
+import type { PriceAnswer, ProductDetail, ProductLevels } from "../lib/types";
 
 export default function ProductPage() {
   const { teamId = "", productId = "" } = useParams();
@@ -150,18 +150,28 @@ export default function ProductPage() {
           </Card>
         )}
 
-        {data.aliases.length > 0 && (
+        {(data.aliases.length > 0 || data.levels) && (
           <Card className="p-4 sm:p-5">
             <h2 className="mb-1 text-sm font-semibold text-body">{t("On receipts")}</h2>
-            <p className="mb-3 text-[12px] text-muted">{t("How each shop prints it. A line printed this way is linked here by itself.")}</p>
-            <ul className="divide-y divide-line">
-              {data.aliases.map((alias) => (
-                <li key={`${alias.shop_id}-${alias.name}`} className="flex items-baseline justify-between gap-3 py-2 text-[13px]">
-                  <span className="truncate font-mono text-body">{alias.name}</span>
-                  <span className="shrink-0 text-muted">{alias.shop_name}</span>
-                </li>
-              ))}
-            </ul>
+            {data.levels && (
+              <div className="mb-3">
+                <p className="text-[13px] text-body">{t("Recognised as: {levels}", { levels: describeLevels(data.levels, t, language) })}</p>
+                <p className="text-[12px] text-muted">{t("A line read the same way is suggested here, however the till prints it.")}</p>
+              </div>
+            )}
+            {data.aliases.length > 0 && (
+              <>
+                <p className="mb-3 text-[12px] text-muted">{t("How each shop prints it. A line printed this way is linked here by itself.")}</p>
+                <ul className="divide-y divide-line">
+                  {data.aliases.map((alias) => (
+                    <li key={`${alias.shop_id}-${alias.name}`} className="flex items-baseline justify-between gap-3 py-2 text-[13px]">
+                      <span className="truncate font-mono text-body">{alias.name}</span>
+                      <span className="shrink-0 text-muted">{alias.shop_name}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
           </Card>
         )}
 
@@ -169,6 +179,14 @@ export default function ProductPage() {
       </div>
     </AppShell>
   );
+}
+
+/** A good's levels on one line, general to specific: "хлеб · белый нарезной · 350 г". */
+function describeLevels(levels: ProductLevels, t: typeof translate, language: string): string {
+  const size = levels.by_weight
+    ? t("by weight")
+    : levels.size && levels.unit ? formatPackSize(levels.size, levels.unit, language) : null;
+  return [levels.kind, levels.variety, levels.brand, size].filter(Boolean).join(" · ");
 }
 
 function PendingCard({ teamId, product, currency }: { teamId: string; product: ProductDetail; currency: string }) {

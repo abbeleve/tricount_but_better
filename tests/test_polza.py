@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+from decimal import Decimal
 
 import httpx
 import pytest
@@ -145,6 +146,12 @@ async def test_polza_lists_known_shops_and_goods_and_reads_matches(
             "items": [
                 {
                     "name": "МОЛ ПРОСТОКВ 2,5%",
+                    "kind": " молоко ",
+                    "variety": "2,5%",
+                    "brand": "",
+                    "size_amount": "0,93",
+                    "size_unit": "l",
+                    "by_weight": "false",
                     "total": "79.90",
                     "product_name": "Молоко Простоквашино 2,5%",
                     "product_id": "p1",
@@ -169,20 +176,28 @@ async def test_polza_lists_known_shops_and_goods_and_reads_matches(
     hints = ScanHints(
         shops=[KnownShop(ref="s1", name="Пятёрочка", aliases=['ООО "Агроторг"'])],
         products=[KnownProduct(ref="p1", name="Молоко Простоквашино 2,5% 930 мл")],
+        kinds=["молоко", "хлеб"],
     )
     result = await get_parser(Settings(polza_api_key="test-key")).parse([b"image"], hints)
 
     text = seen[0]["messages"][1]["content"][0]["text"]
     assert 's1: Пятёрочка; ООО "Агроторг"' in text
     assert "p1: Молоко Простоквашино 2,5% 930 мл" in text
+    assert "Kinds the team already uses: молоко; хлеб" in text
     schema = seen[0]["response_format"]["json_schema"]["schema"]
     assert {"shop_name", "shop_id"} <= set(schema["required"])
-    assert {"product_id", "discounted"} <= set(schema["properties"]["items"]["items"]["required"])
+    line = schema["properties"]["items"]["items"]
+    assert {"product_id", "discounted", "kind", "size_unit", "by_weight"} <= set(line["required"])
+    # The levels come right after the printed name, before the readable one.
+    order = list(line["properties"])
+    assert order.index("name") < order.index("kind") < order.index("product_name")
 
     receipt = result.receipt
     assert (receipt.shop_name, receipt.shop_id, receipt.shop_address) == ("Пятёрочка", "s1", None)
     item = receipt.items[0]
     assert (item.product_id, item.discounted, str(item.regular_price)) == ("p1", True, "99.90")
+    assert (item.kind, item.variety, item.brand) == ("молоко", "2,5%", None)
+    assert (item.size_amount, item.size_unit, item.by_weight) == (Decimal("0.93"), "l", False)
 
 
 @pytest.mark.asyncio

@@ -12,7 +12,7 @@ from decimal import Decimal
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
-from ..catalog import link_products, name_key, set_listed
+from ..catalog import levels_from, link_products, name_key, set_listed
 from ..config import get_settings
 from ..deps import DbSession, Membership, TeamDep
 from ..models import Product, Shop, ShopPrice
@@ -22,11 +22,12 @@ from ..schemas import (
     PriceImportOut,
     PriceScanIn,
     PriceScanOut,
+    ProductLevels,
     ScannedPriceOut,
 )
 from ..vlm import VlmError, VlmUnavailable, get_parser
 from ..vlm.schema import ParsedPriceList
-from .receipts import ScanCatalog, clip_text, decode_images
+from .receipts import ScanCatalog, clip_text, decode_images, parsed_levels
 
 router = APIRouter(prefix="/teams/{team_id}/prices", tags=["goods"])
 
@@ -45,17 +46,23 @@ def _minor(amount: Decimal | None, currency: str) -> int | None:
 def _to_out(parsed: ParsedPriceList, currency: str, catalog: ScanCatalog) -> PriceScanOut:
     shop = catalog.shop(None, parsed.shop_name, parsed.shop_id, parsed.shop_address)
     listed = [item for item in parsed.items if name_key(item.name)]
+    levels = [parsed_levels(item) for item in listed]
     matches = catalog.products(
-        [(item.name, item.product_name, item.product_id) for item in listed], shop.shop_id
+        [
+            (item.name, item.product_name, item.product_id, described)
+            for item, described in zip(listed, levels, strict=True)
+        ],
+        shop.shop_id,
     )
     items = []
-    for item, (product_id, matched_by) in zip(listed, matches, strict=True):
+    for item, described, (product_id, matched_by) in zip(listed, levels, matches, strict=True):
         price = _minor(item.price, currency)
         regular = _minor(item.regular_price, currency)
         items.append(
             ScannedPriceOut(
                 name=clip_text(item.name, 200) or item.name[:200],
                 product_name=clip_text(item.product_name, 200),
+                levels=ProductLevels.of(described),
                 product_id=product_id,
                 product_match=matched_by,
                 price=price,
@@ -122,7 +129,15 @@ def import_prices(
         session,
         team_id,
         shop.id,
-        [(item.name, item.product_id, item.product_name) for item in items],
+        [
+            (
+                item.name,
+                item.product_id,
+                item.product_name,
+                levels_from(**item.levels.model_dump()) if item.levels else None,
+            )
+            for item in items
+        ],
     )
     saved = {
         price.product_id: price

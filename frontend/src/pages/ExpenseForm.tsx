@@ -42,7 +42,8 @@ import { previewEqualSplit, toMajorString, toMinor } from "../lib/money";
 import { useI18n } from "../lib/i18n";
 import { basketElsewhere, initialAnswers, paidPerUnit, receiptVsUsual } from "../lib/prices";
 import type {
-  Expense, Member, ParsedReceiptItem, PriceAnswer, Product, ReceiptScan, ShopMatch,
+  Expense, Member, ParsedReceiptItem, PriceAnswer, Product, ProductLevels, ProductMatch,
+  ReceiptScan, ShopMatch,
 } from "../lib/types";
 
 interface ItemDraft {
@@ -56,7 +57,9 @@ interface ItemDraft {
   /* Price tracking; only sent along when the expense has a shop. */
   productId?: string;
   productName?: string;
-  productMatch?: "receipt" | "model" | "name" | null;
+  productMatch?: ProductMatch | null;
+  /** As the model read the line; a new product keeps them for matching. */
+  levels?: ProductLevels;
   track?: boolean;
   onSale?: boolean;
   regularUnitPrice?: number;
@@ -268,6 +271,7 @@ export default function ExpenseForm() {
           shares: item.userIds.map((id) => ({ user_id: id, weight: item.weights?.[id] ?? "1" })),
           product_id: item.track === false ? null : item.productId ?? null,
           product_name: item.productName || null,
+          levels: item.track === false ? null : item.levels ?? null,
           track: item.track !== false,
           on_sale: Boolean(item.onSale),
           regular_unit_price: item.regularUnitPrice ?? null,
@@ -352,6 +356,7 @@ export default function ExpenseForm() {
         productId: item.product_id ?? undefined,
         productName: item.product_name ?? undefined,
         productMatch: item.product_match,
+        levels: item.levels ?? undefined,
         track: true,
         onSale: item.on_sale,
         regularUnitPrice: item.regular_unit_price ?? undefined,

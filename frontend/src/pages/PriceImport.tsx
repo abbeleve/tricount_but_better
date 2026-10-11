@@ -17,7 +17,7 @@ import { useI18n } from "../lib/i18n";
 import { toMajorString, toMinor } from "../lib/money";
 import { formatPercent } from "../lib/price-format";
 import { priceGap } from "../lib/prices";
-import type { PriceScan, Product, ShopMatch } from "../lib/types";
+import type { PriceScan, Product, ProductLevels, ShopMatch } from "../lib/types";
 
 interface Row extends ProductLink {
   key: string;
@@ -27,6 +27,8 @@ interface Row extends ProductLink {
   /** A crossed-out or old price: with it, the price is a sale. */
   regular: string;
   saleUntil: string;
+  /** As the model read the good; a new product keeps them for matching. */
+  levels?: ProductLevels;
 }
 
 let counter = 0;
@@ -87,6 +89,7 @@ export default function PriceImport() {
       productId: item.product_id ?? undefined,
       productName: item.product_name ?? undefined,
       productMatch: item.product_match,
+      levels: item.levels ?? undefined,
       track: true,
       price: item.price === null ? "" : toMajorString(item.price, currency),
       regular: item.regular_price === null ? "" : toMajorString(item.regular_price, currency),
@@ -126,6 +129,7 @@ export default function PriceImport() {
           name: row.name.trim().slice(0, 200) || (row.productName ?? "").slice(0, 200),
           product_id: row.productId ?? null,
           product_name: row.productName?.slice(0, 200) || null,
+          levels: row.levels ?? null,
           price: price!,
           regular_price: sale ? regular : null,
           sale_until: sale && row.saleUntil ? row.saleUntil : null,

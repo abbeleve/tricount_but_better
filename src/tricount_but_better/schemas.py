@@ -205,6 +205,38 @@ class ShareIn(BaseModel):
     weight: Decimal = Field(default=Decimal(1), ge=0)
 
 
+# How sure a scanned line's product is. "receipt": this shop printed the line
+# this way before and it was linked then. "levels": a known good has the same
+# levels. "model": the model recognised a known good. "name": same name.
+ProductMatch = Literal["receipt", "levels", "model", "name"]
+
+
+class ProductLevels(BaseModel):
+    """A good described from general to specific, as the model read it: what it
+    is, which one, whose, how big. A scan sends it with each line and a save
+    sends it back, so a new product keeps it for matching later lines."""
+
+    kind: str = Field(min_length=1, max_length=80, description="e.g. 'хлеб'")
+    variety: str | None = Field(default=None, max_length=120, description="e.g. 'белый нарезной'")
+    brand: str | None = Field(default=None, max_length=80)
+    size: Decimal | None = Field(default=None, gt=0, le=Decimal("999999999"))
+    unit: Literal["g", "ml", "pcs"] | None = Field(
+        default=None, description="Of the pack size: grams, millilitres or pieces."
+    )
+    by_weight: bool = Field(default=False, description="Sold by weight; then there is no size.")
+
+    @model_validator(mode="after")
+    def _size_has_unit(self) -> Self:
+        if (self.size is None) != (self.unit is None):
+            raise ValueError("a pack size needs a unit, and a unit a size")
+        return self
+
+    @classmethod
+    def of(cls, levels: object | None) -> ProductLevels | None:
+        """From ``catalog.Levels``, or None for a good without levels."""
+        return cls.model_validate(levels, from_attributes=True) if levels else None
+
+
 class ItemIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     total: int = Field(description="Line total in minor units.")
@@ -217,6 +249,7 @@ class ItemIn(BaseModel):
     # (else the line's own name). ``track=False`` keeps a line out of it.
     product_id: uuid.UUID | None = None
     product_name: str | None = Field(default=None, max_length=200)
+    levels: ProductLevels | None = None
     track: bool = True
     on_sale: bool = False
     regular_unit_price: int | None = Field(default=None, gt=0)
@@ -432,6 +465,7 @@ class ProductListOut(BaseModel):
 
 
 class ProductDetailOut(ProductOut):
+    levels: ProductLevels | None = Field(description="What the good was matched on, if known.")
     history: list[PricePointOut]
     aliases: list[ProductAliasOut]
 
@@ -486,8 +520,9 @@ class ScannedPriceOut(BaseModel):
 
     name: str = Field(description="As shown.")
     product_name: str | None = None
+    levels: ProductLevels | None = None
     product_id: uuid.UUID | None = None
-    product_match: Literal["receipt", "model", "name"] | None = None
+    product_match: ProductMatch | None = None
     price: int | None = Field(description="Per piece or per kg; None if unreadable.")
     regular_price: int | None = Field(description="A crossed-out or old price shown beside it.")
     sale_until: date | None = None
@@ -510,6 +545,7 @@ class ListedPriceIn(BaseModel):
     name: str = Field(min_length=1, max_length=200, description="As shown; remembered per shop.")
     product_id: uuid.UUID | None = None
     product_name: str | None = Field(default=None, max_length=200)
+    levels: ProductLevels | None = None
     price: int = Field(gt=0)
     regular_price: int | None = Field(default=None, gt=0)
     sale_until: date | None = None
@@ -719,10 +755,9 @@ class ParsedItemOut(BaseModel):
     total: int
     # A readable name for the good, for a new product; the model writes it.
     product_name: str | None = None
+    levels: ProductLevels | None = None
     product_id: uuid.UUID | None = None
-    # "receipt": this shop printed this line before and it was linked then.
-    # "model": the model recognised a known product. "name": same name.
-    product_match: Literal["receipt", "model", "name"] | None = None
+    product_match: ProductMatch | None = None
     on_sale: bool = False
     regular_unit_price: int | None = None
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
@@ -9,7 +10,15 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
-from tricount_but_better.catalog import name_key, paid_per_unit, shop_key
+from tricount_but_better.catalog import (
+    Levels,
+    levels_from,
+    name_key,
+    paid_per_unit,
+    product_name_for,
+    same_good,
+    shop_key,
+)
 from tricount_but_better.models import Expense
 
 TODAY = date.today()
@@ -106,10 +115,75 @@ def test_product_names_compare_across_scripts_and_punctuation():
     assert name_key("—") == ""
 
 
+@pytest.mark.parametrize(
+    ("printed", "key"),
+    [
+        ("[M+]0829 САЛФЕТКИ ЛЕНТА ВЛАЖНЫЕ", "салфетки лента влажные"),
+        ("[М-] 2196 салфетки лента влажные", "салфетки лента влажные"),  # Cyrillic М
+        ("[M]САЛФЕТКИ", "салфетки"),
+        ("3502234 МОЛОКО 2,5%", "молоко 2 5"),
+        ("7 ДНЕЙ КРУАССАН", "7 дней круассан"),  # a short number is part of the name
+        ("МОЛОКО 3502234", "молоко 3502234"),  # only codes in front are dropped
+    ],
+)
+def test_codes_a_till_prints_in_front_of_a_good_are_not_part_of_it(printed, key):
+    assert name_key(printed) == key
+
+
+def test_a_good_named_after_its_printed_line_drops_the_codes():
+    assert product_name_for("[M+]0829 САЛФЕТКИ ЛЕНТА", None) == "САЛФЕТКИ ЛЕНТА"
+    assert product_name_for("[M+]0829 САЛФЕТКИ ЛЕНТА", "Салфетки Лента") == "Салфетки Лента"
+
+
 def test_price_per_unit_comes_from_what_was_paid():
     assert paid_per_unit(433_32, Decimal("0.482")) == 899_00
     assert paid_per_unit(300_00, Decimal(3)) == 100_00
     assert paid_per_unit(99_90, Decimal(0)) == 99_90
+
+
+# ----------------------------------------------------------------- levels
+
+BREAD = Levels(kind="хлеб", variety="белый нарезной", size=Decimal(350), unit="g")
+
+
+def test_pack_sizes_compare_in_one_unit():
+    litre = levels_from("молоко", "2,5%", "Простоквашино", Decimal("0.93"), "l")
+    millilitres = levels_from("молоко", "2,5%", None, Decimal("930"), "мл")
+    assert litre is not None and millilitres is not None
+    assert (litre.size, litre.unit) == (Decimal(930), "ml")
+    assert same_good(litre, millilitres)
+
+
+def test_levels_need_a_kind_and_goods_sold_by_weight_have_no_size():
+    assert levels_from(None) is None
+    assert levels_from(" — ") is None
+    bananas = levels_from("бананы", size=Decimal(1), unit="kg", by_weight=True)
+    assert bananas is not None and (bananas.size, bananas.unit) == (None, None)
+    crate = levels_from("хлеб", size=Decimal(350), unit="ящик")
+    assert crate is not None and (crate.size, crate.unit) == (None, None)
+
+
+@pytest.mark.parametrize(
+    ("change", "same"),
+    [
+        ({"variety": "Нарезной, белый"}, True),  # word order, case and punctuation
+        ({"brand": "Хлебный дом"}, True),  # a brand only one line prints
+        ({"variety": "белый"}, False),
+        ({"variety": None}, False),
+        ({"size": Decimal(400)}, False),
+        ({"size": None, "unit": None}, False),
+        ({"kind": "батон"}, False),
+    ],
+)
+def test_one_good_needs_every_level_to_agree(change, same):
+    assert same_good(BREAD, dataclasses.replace(BREAD, **change)) is same
+
+
+def test_two_brands_are_two_goods():
+    assert not same_good(
+        dataclasses.replace(BREAD, brand="Каравай"),
+        dataclasses.replace(BREAD, brand="Хлебный дом"),
+    )
 
 
 # ------------------------------------------------------------------ shops
@@ -322,6 +396,81 @@ def test_relinking_a_line_by_hand_teaches_the_shop(client, team, alice):
     assert fixed["items"][0]["product_id"] == milk
     later = _buy(client, team, alice, lenta["id"], [("MLK 2.5", 91_00)])
     assert later["items"][0]["product_id"] == milk
+
+
+LEVELS = {"kind": "хлеб", "variety": "белый нарезной", "size": "350", "unit": "g"}
+
+
+def test_packs_printed_with_their_own_codes_are_one_good(client, team, alice):
+    lenta = _shop(client, team, alice, "Lenta")
+    saved = _buy(
+        client,
+        team,
+        alice,
+        lenta["id"],
+        [(f"[M+]{code} САЛФЕТКИ ЛЕНТА ВЛАЖНЫЕ", 204_99) for code in ("0829", "2196", "5143")],
+    )
+    assert len({item["product_id"] for item in saved["items"]}) == 1
+    assert saved["price_changes"] == []
+    [product] = _products(client, team, alice)["items"]
+    assert product["name"] == "САЛФЕТКИ ЛЕНТА ВЛАЖНЫЕ"
+
+
+def test_a_new_good_keeps_the_levels_its_line_came_with(client, team, alice):
+    lenta = _shop(client, team, alice, "Lenta")
+    saved = _buy(
+        client,
+        team,
+        alice,
+        lenta["id"],
+        [{"name": "ХЛЕБ БЕЛ НАРЕЗ 350Г", "total": 54_99, "levels": LEVELS}],
+    )
+    product = _product(client, team, alice, saved["items"][0]["product_id"])
+    assert product["levels"] == {
+        "kind": "хлеб",
+        "variety": "белый нарезной",
+        "brand": None,
+        "size": "350.000",
+        "unit": "g",
+        "by_weight": False,
+    }
+
+
+def test_a_good_without_levels_takes_its_next_lines_and_keeps_them(client, team, alice):
+    lenta = _shop(client, team, alice, "Lenta")
+    line = {"name": "ХЛЕБ БЕЛ НАРЕЗ 350Г", "total": 54_99}
+    product_id = _buy(client, team, alice, lenta["id"], [line])["items"][0]["product_id"]
+    assert _product(client, team, alice, product_id)["levels"] is None
+
+    _buy(client, team, alice, lenta["id"], [{**line, "levels": LEVELS}])
+    assert _product(client, team, alice, product_id)["levels"]["kind"] == "хлеб"
+    # One odd reading later does not move the good away from its matches.
+    _buy(client, team, alice, lenta["id"], [{**line, "levels": {**LEVELS, "kind": "батон"}}])
+    assert _product(client, team, alice, product_id)["levels"]["kind"] == "хлеб"
+
+
+def test_a_pack_size_without_its_unit_is_refused(client, team, alice):
+    lenta = _shop(client, team, alice, "Lenta")
+    response = client.post(
+        f"/api/teams/{team}/expenses",
+        json={
+            "title": "Shop",
+            "payer_id": alice.id,
+            "spent_at": str(TODAY),
+            "split_mode": "items",
+            "shop_id": lenta["id"],
+            "items": [
+                {
+                    "name": "Bread",
+                    "total": 54_99,
+                    "shares": [{"user_id": alice.id}],
+                    "levels": {"kind": "хлеб", "size": "350"},
+                }
+            ],
+        },
+        headers=alice.headers,
+    )
+    assert response.status_code == 422
 
 
 # --------------------------------------------------------- price review
@@ -541,6 +690,23 @@ def test_merging_duplicates_brings_their_shops_together(client, team, alice):
     # The next Pyaterochka receipt links straight to the merged product.
     again = _buy(client, team, alice, pyat["id"], [("Moloko PRSTKV", 85_00)])
     assert again["items"][0]["product_id"] == keep
+
+
+def test_merging_gives_a_good_without_levels_the_duplicates(client, team, alice):
+    lenta = _shop(client, team, alice, "Lenta")
+    keep = _buy(client, team, alice, lenta["id"], [("Bread", 50_00)])["items"][0]["product_id"]
+    dup = _buy(
+        client,
+        team,
+        alice,
+        lenta["id"],
+        [{"name": "ХЛЕБ БЕЛ НАРЕЗ 350Г", "total": 54_99, "levels": LEVELS}],
+    )["items"][0]["product_id"]
+    response = client.post(
+        f"/api/teams/{team}/products/{dup}/merge", json={"into_id": keep}, headers=alice.headers
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["levels"]["variety"] == "белый нарезной"
 
 
 def test_a_price_seen_on_a_shelf_can_be_set_by_hand(client, team, alice):
