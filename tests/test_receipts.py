@@ -389,3 +389,121 @@ def test_scanned_lines_link_to_goods_this_shop_printed_before(
     assert (second["product_id"], second["product_match"]) == (None, None)
     assert second["product_name"] == "Салфетки бумажные"
     assert (second["on_sale"], second["regular_unit_price"]) == (True, 89_90)
+
+
+def _bought(client, team, actor, shop_id, *items):
+    """Save an itemised expense at a shop; each item is (name, total, levels)."""
+    response = client.post(
+        f"/api/teams/{team}/expenses",
+        json={
+            "title": "Shop",
+            "payer_id": actor.id,
+            "spent_at": "2026-09-01",
+            "split_mode": "items",
+            "shop_id": shop_id,
+            "items": [
+                {"name": name, "total": total, "levels": levels, "shares": [{"user_id": actor.id}]}
+                for name, total, levels in items
+            ],
+        },
+        headers=actor.headers,
+    )
+    assert response.status_code == 201, response.text
+    return [item["product_id"] for item in response.json()["items"]]
+
+
+BREAD = {"kind": "хлеб", "variety": "белый нарезной", "size": "350", "unit": "g"}
+BANANAS = {"kind": "бананы", "by_weight": True}
+
+
+def test_a_line_printed_another_way_links_to_the_good_with_the_same_levels(
+    client, team, alice, monkeypatch, scanning_enabled
+) -> None:
+    lenta = _shop(client, team, alice, "Lenta")
+    bananas, bread = _bought(
+        client,
+        team,
+        alice,
+        lenta["id"],
+        ("КГ БАНАНЫ КГ", 173_03, BANANAS),
+        ("ХЛЕБ БЕЛ НАРЕЗ 350Г", 54_99, BREAD),
+    )
+
+    receipt = SAMPLE.model_copy(
+        update={
+            "merchant": "Lenta",
+            "items": [
+                # The model read the last letters off this time.
+                ParsedItem(
+                    name="КГ БАНАНЫ К", total=Decimal("120.50"), kind="Бананы", by_weight=True
+                ),
+                ParsedItem(
+                    name="ХЛЕБ БЕЛЫЙ НАРЕЗНОЙ 0,35КГ",
+                    total=Decimal("54.99"),
+                    kind="хлеб",
+                    variety="нарезной белый",
+                    size_amount=Decimal("0.35"),
+                    size_unit="kg",
+                ),
+                ParsedItem(
+                    name="ХЛЕБ БЕЛ НАРЕЗ 400Г",
+                    total=Decimal("59.99"),
+                    kind="хлеб",
+                    variety="белый нарезной",
+                    size_amount=Decimal("400"),
+                    size_unit="g",
+                ),
+                ParsedItem(name="ПАКЕТ", total=Decimal("9.99"), kind="—"),
+            ],
+        }
+    )
+    parser = _install(monkeypatch, FakeParser(receipt=receipt))
+    body = _scan(client, team, alice, _jpeg()).json()
+    matched = [(item["product_id"], item["product_match"]) for item in body["items"]]
+    assert matched == [(bananas, "levels"), (bread, "levels"), (None, None), (None, None)]
+    assert body["items"][1]["levels"] == {
+        "kind": "хлеб",
+        "variety": "нарезной белый",
+        "brand": None,
+        "size": "350.000",
+        "unit": "g",
+        "by_weight": False,
+    }
+    assert body["items"][3]["levels"] is None
+    # The kinds the team already has are offered, so the model reuses them.
+    assert sorted(parser.hints.kinds) == ["бананы", "хлеб"]
+
+
+def test_goods_told_apart_only_by_brand_are_left_to_a_person(
+    client, team, alice, monkeypatch, scanning_enabled
+) -> None:
+    lenta = _shop(client, team, alice, "Lenta")
+    yogurt = {"kind": "йогурт", "variety": "клубника", "size": "260", "unit": "g"}
+    chudo, _ = _bought(
+        client,
+        team,
+        alice,
+        lenta["id"],
+        ("ЙОГ ЧУДО КЛУБН 260Г", 69_99, {**yogurt, "brand": "Чудо"}),
+        ("ЙОГ ЭРМАНН КЛУБН 260Г", 59_99, {**yogurt, "brand": "Эрманн"}),
+    )
+    line = {
+        "total": Decimal("69.99"),
+        "kind": "йогурт",
+        "variety": "клубника",
+        "size_amount": Decimal("260"),
+        "size_unit": "g",
+    }
+    receipt = SAMPLE.model_copy(
+        update={
+            "merchant": "Pyaterochka",
+            "items": [
+                ParsedItem(name="ЙОГУРТ КЛУБН 260Г", **line),
+                ParsedItem(name="ЙОГУРТ ЧУДО КЛУБНИКА 260Г", brand="ЧУДО", **line),
+            ],
+        }
+    )
+    _install(monkeypatch, FakeParser(receipt=receipt))
+    unbranded, branded = _scan(client, team, alice, _jpeg()).json()["items"]
+    assert (unbranded["product_id"], unbranded["product_match"]) == (None, None)
+    assert (branded["product_id"], branded["product_match"]) == (chudo, "levels")

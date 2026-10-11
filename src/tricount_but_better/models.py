@@ -195,10 +195,18 @@ class Product(Base):
 
     ``key`` is ``catalog.name_key(name)``; it is unique per team, so two
     receipts that name a good the same way land on the same product.
+
+    The levels -- ``kind`` down to ``size`` -- describe the good from general to
+    specific, as the model read it off the first line linked to it. They match
+    a line whose printed name is new: "КГ БАНАНЫ К" is still bananas by weight.
+    ``size`` is in grams, millilitres or pieces (``size_unit``).
     """
 
     __tablename__ = "products"
-    __table_args__ = (UniqueConstraint("team_id", "key", name="uq_product_key"),)
+    __table_args__ = (
+        UniqueConstraint("team_id", "key", name="uq_product_key"),
+        Index("ix_product_team_kind", "team_id", "kind_key"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     team_id: Mapped[uuid.UUID] = mapped_column(
@@ -206,6 +214,13 @@ class Product(Base):
     )
     name: Mapped[str] = mapped_column(String(200))
     key: Mapped[str] = mapped_column(String(200))
+    kind: Mapped[str | None] = mapped_column(String(80))
+    kind_key: Mapped[str | None] = mapped_column(String(80))
+    variety: Mapped[str | None] = mapped_column(String(120))
+    brand: Mapped[str | None] = mapped_column(String(80))
+    size: Mapped[Decimal | None] = mapped_column(Numeric(12, 3))
+    size_unit: Mapped[str | None] = mapped_column(String(3))
+    by_weight: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     team: Mapped[Team] = relationship(back_populates="products")

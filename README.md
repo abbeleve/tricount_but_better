@@ -37,6 +37,17 @@ Photograph the receipt, and a vision model reads it into editable line items.
   you say — and the regular price returns by itself when it ends), or a one-off
   to **keep** the old price for. An old receipt entered late never rolls a
   price back. Unanswered questions wait on the Prices tab as "price changed".
+  *How goods are recognised:* the model describes every line in levels, from
+  general to specific — what it is, which one, whose and how big ("хлеб ·
+  белый нарезной · 350 г") — and a line is suggested for the good described
+  the same way, however the till cut or coded its name: "КГ БАНАНЫ К" is still
+  bananas by weight. A different pack size, fat percentage or brand is always
+  another good, and when only a brand would tell two goods apart and the line
+  prints none, you choose. The codes a till prints in front of a name — the
+  "[M+]0829" on marked goods, a leading article number — are not part of it,
+  so three packs of one good are one good. The product page shows what a good
+  is recognised as. The kinds of goods the team already has are offered to the
+  model, so it keeps to the same words.
   Shops name the same good differently, so two products can be **merged**.
   Prices can also be added and edited by hand — a price seen on a shelf, a
   correction, or a sale with its end date — and a product can be added without

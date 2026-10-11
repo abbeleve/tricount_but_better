@@ -110,3 +110,16 @@ test("Another shop is only worth a trip for a real saving on several items", () 
   assert.equal(worthATrip(shop(5, 10000, 9500)), false); // 5% is not worth the walk
   assert.equal(worthATrip(shop(5, 10000, 11000)), false);
 });
+
+const format = ts.transpileModule(await readFile(new URL("../src/lib/price-format.ts", import.meta.url), "utf8"), {
+  compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+});
+const { formatPackSize } = await import(`data:text/javascript;base64,${Buffer.from(format.outputText).toString("base64")}`);
+
+test("Pack sizes read in the larger unit from 1000 up", () => {
+  const spaced = (text) => text.replace(/\s/g, " ");
+  assert.equal(spaced(formatPackSize("350.000", "g", "ru")), "350 г");
+  assert.equal(spaced(formatPackSize("1500.000", "g", "ru")), "1,5 кг");
+  assert.equal(spaced(formatPackSize("930.000", "ml", "ru")), "930 мл");
+  assert.equal(spaced(formatPackSize("10.000", "pcs", "en")), "10 pcs");
+});

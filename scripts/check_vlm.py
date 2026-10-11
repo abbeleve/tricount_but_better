@@ -97,6 +97,10 @@ async def main() -> int:
         print(f"  {item.total:>10}  {item.name}{quantity}{sale}")
         if item.product_name:
             print(f"{'':14}-> {item.product_name}")
+        if item.kind:
+            size = f"{item.size_amount} {item.size_unit}" if item.size_amount else None
+            levels = [item.kind, item.variety, item.brand, size, "by weight" * item.by_weight]
+            print(f"{'':14}   {' / '.join(level or '-' for level in levels)}")
     if receipt.notes:
         print(f"\nnotes: {receipt.notes}")
     return 0

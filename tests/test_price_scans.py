@@ -305,3 +305,48 @@ def test_long_printed_shop_names_are_kept_as_aliases_and_match(
     assert len(shop["aliases"][0]) == 120
     _install(monkeypatch, FakeParser(LEAFLET.model_copy(update={"shop_name": printed})))
     assert _scan(client, team, alice).json()["shop"]["shop_id"] == shop["id"]
+
+
+def test_a_good_on_a_screenshot_is_found_by_its_levels_and_imported_with_them(
+    client, team, alice, monkeypatch, scanning_enabled
+):
+    lenta, pyat = _shop(client, team, alice, "Лента"), _shop(client, team, alice, "Пятёрочка")
+    milk = {"kind": "молоко", "variety": "2,5%", "brand": "Простоквашино"}
+    saved = _import(
+        client,
+        team,
+        alice,
+        lenta["id"],
+        [
+            {
+                "name": "МОЛ ПРОСТОКВ 2,5% 930МЛ",
+                "price": 99_99,
+                "levels": {**milk, "size": "930", "unit": "ml"},
+            }
+        ],
+    )
+    assert saved.status_code == 200, saved.text
+    [known] = client.get(f"/api/teams/{team}/products", headers=alice.headers).json()["items"]
+    assert _product(client, team, alice, known["id"])["levels"]["size"] == "930.000"
+
+    shown = ParsedPrice(
+        name="Молоко Простоквашино пастеризованное 2.5% 0,93 л",
+        price=Decimal("94.99"),
+        size_amount=Decimal("0.93"),
+        size_unit="l",
+        **milk,
+    )
+    _install(monkeypatch, FakeParser(ParsedPriceList(shop_name="Пятёрочка", items=[shown])))
+    [item] = _scan(client, team, alice).json()["items"]
+    assert (item["product_id"], item["product_match"]) == (known["id"], "levels")
+    assert item["levels"]["unit"] == "ml"
+
+    imported = _import(
+        client,
+        team,
+        alice,
+        pyat["id"],
+        [{"name": shown.name, "product_id": item["product_id"], "price": 94_99}],
+    )
+    assert imported.json() == {"saved": 1, "created": 0}
+    assert len(_product(client, team, alice, known["id"])["prices"]) == 2

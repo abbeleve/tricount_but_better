@@ -22,6 +22,7 @@ def _known(hints: ScanHints | None) -> str:
     return hints_text(
         [(shop.ref, shop.name, shop.aliases) for shop in hints.shops],
         [(product.ref, product.name) for product in hints.products],
+        hints.kinds,
     )
 
 

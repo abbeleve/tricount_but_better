@@ -19,7 +19,9 @@ from ..catalog import (
     Observation,
     Purchase,
     decide,
+    describe,
     first_sighting,
+    levels_of,
     name_key,
     needs_review,
     paid_per_unit,
@@ -38,6 +40,7 @@ from ..schemas import (
     ProductAliasOut,
     ProductCreate,
     ProductDetailOut,
+    ProductLevels,
     ProductListOut,
     ProductMerge,
     ProductOut,
@@ -196,6 +199,7 @@ def build_products(
         out.append(
             ProductDetailOut(
                 **fields,
+                levels=ProductLevels.of(levels_of(product)),
                 history=[
                     PricePointOut(
                         expense_id=line.expense_id,
@@ -383,7 +387,8 @@ def merge_product(
     """Fold a duplicate into another product: one good, bought in two shops.
 
     Purchases and receipt names move across. Where both had a price for the
-    same shop, the more recently confirmed one is kept.
+    same shop, the more recently confirmed one is kept. A product without
+    levels takes the duplicate's.
     """
     source = _get(session, membership.team_id, product_id)
     target = _get(session, membership.team_id, payload.into_id)
@@ -411,6 +416,7 @@ def merge_product(
             session.flush()  # the (product, shop) pair is unique: drop before moving
         price.product = target
     session.flush()
+    describe(target, levels_of(source))
     session.delete(source)
     session.commit()
     session.refresh(target)

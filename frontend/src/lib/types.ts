@@ -176,6 +176,24 @@ export interface InvitePreview {
   currency: string;
 }
 
+/**
+ * How sure a scanned line's product is. receipt: this shop printed the line so
+ * before; levels: a known good is described the same way; model: recognised;
+ * name: same name. All but "receipt" are suggestions, worth a second look.
+ */
+export type ProductMatch = "receipt" | "levels" | "model" | "name";
+
+/** A good described from general to specific, as the model read it. */
+export interface ProductLevels {
+  kind: string;
+  variety: string | null;
+  brand: string | null;
+  /** Pack size as a decimal string, in grams, millilitres or pieces. */
+  size: string | null;
+  unit: "g" | "ml" | "pcs" | null;
+  by_weight: boolean;
+}
+
 export interface ParsedReceiptItem {
   name: string;
   quantity: string | null;
@@ -183,9 +201,10 @@ export interface ParsedReceiptItem {
   total: number;
   /** A readable name for a new product, written by the model. */
   product_name: string | null;
+  /** Sent back on save, so a new product keeps them for matching later lines. */
+  levels: ProductLevels | null;
   product_id: string | null;
-  /** receipt: this shop printed the line so before; model: recognised; name: same name. */
-  product_match: "receipt" | "model" | "name" | null;
+  product_match: ProductMatch | null;
   on_sale: boolean;
   regular_unit_price: number | null;
 }
@@ -310,6 +329,8 @@ export interface Product {
 }
 
 export interface ProductDetail extends Product {
+  /** What a scanned line is matched on, when a receipt has described it. */
+  levels: ProductLevels | null;
   history: PricePoint[];
   aliases: { shop_id: string; shop_name: string; name: string }[];
 }
@@ -350,8 +371,9 @@ export interface Savings {
 export interface ScannedPrice {
   name: string;
   product_name: string | null;
+  levels: ProductLevels | null;
   product_id: string | null;
-  product_match: "receipt" | "model" | "name" | null;
+  product_match: ProductMatch | null;
   /** Per piece or per kilogram; null when the model could not read it. */
   price: number | null;
   /** A crossed-out or old price shown beside it. */
@@ -370,6 +392,7 @@ export interface ListedPrice {
   name: string;
   product_id: string | null;
   product_name: string | null;
+  levels: ProductLevels | null;
   price: number;
   regular_price: number | null;
   sale_until: string | null;
