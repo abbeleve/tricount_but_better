@@ -128,11 +128,12 @@ class PolzaReceiptParser:
                 if response.is_error:
                     await response.aread()
                     _raise_for_status(response, what)
-                if response.headers.get("content-type", "").startswith("text/event-stream"):
-                    answer, finish = await _streamed(response, what)
-                else:
+                # A whole completion comes back as JSON; anything else is the stream.
+                if "json" in response.headers.get("content-type", ""):
                     await response.aread()
                     answer, finish = _completed(response, what)
+                else:
+                    answer, finish = await _streamed(response, what)
         except (TimeoutError, httpx.TimeoutException) as exc:
             raise VlmError(f"the model took too long to read this {what}") from exc
         except httpx.RequestError as exc:

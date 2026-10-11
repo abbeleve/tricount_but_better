@@ -16,13 +16,14 @@ LEVELS_RULES = """\
   "молоко", "бананы", "салфетки влажные".
 - `variety`: what sets it apart within its kind -- type, flavour, fat
   percentage, colour, cut, purpose: "белый нарезной", "2,5%", "клубника".
-  Null if none is named.
+  An empty string if none is named.
 - `brand`: the brand or producer if shown, written out in full when it is
   abbreviated ("ПРОСТОКВ" -> "Простоквашино"); a shop's own label counts
-  ("Лента"). Null if none is shown. Never guess one.
+  ("Лента"). An empty string if none is shown. Never guess one.
 - `size_amount` and `size_unit` (g, kg, ml, l or pcs): the pack size in the
   name: "350Г" -> "350" and "g", "0,93Л" -> "0.93" and "l", "10ШТ" -> "10" and
-  "pcs". Both null when no pack size is shown, and for goods sold by weight.
+  "pcs". Both empty strings when no pack size is shown, and for goods sold
+  by weight.
 - `by_weight`: true when the good is sold by weight and priced per kilogram.
 - `product_name`: all of it as one readable name a person would write on a
   shopping list, in the language shown: "МОЛ ПРОСТОКВ 2,5% 930" -> "Молоко

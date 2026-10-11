@@ -16,29 +16,38 @@ from pydantic import BaseModel, Field, field_validator
 # A good described in levels, general to specific. Shared by receipts and price
 # lists, and placed right after the printed name: the model writes the levels
 # before the readable name, so the name follows from them.
+#
+# A missing level is an empty string, not null: Claude's structured outputs
+# reject a schema with more than MAX_UNION_FIELDS fields typed ["string",
+# "null"], and five nullable levels pushed the receipt over it. The parsers
+# read "" as none, exactly like null.
 LEVEL_PROPERTIES: dict = {
     "kind": {
-        "type": ["string", "null"],
+        "type": "string",
         "description": "What the good is, generic and lower case: 'хлеб', 'бананы'.",
     },
     "variety": {
-        "type": ["string", "null"],
-        "description": "Type, flavour, fat %, colour, cut or purpose within the kind.",
+        "type": "string",
+        "description": "Type, flavour, fat %, colour, cut or purpose within the kind; '' if none.",
     },
     "brand": {
-        "type": ["string", "null"],
-        "description": "Brand or producer, written out in full; null if not printed.",
+        "type": "string",
+        "description": "Brand or producer, written out in full; '' if not printed.",
     },
     "size_amount": {
-        "type": ["string", "null"],
-        "description": "Pack size as a decimal string, e.g. '350' or '0.93'; null if none.",
+        "type": "string",
+        "description": "Pack size as a decimal string, e.g. '350' or '0.93'; '' if none.",
     },
     "size_unit": {
-        "type": ["string", "null"],
-        "description": "Unit of the pack size: g, kg, ml, l or pcs.",
+        "type": "string",
+        "description": "Unit of the pack size: g, kg, ml, l or pcs; '' if none.",
     },
     "by_weight": {"type": "boolean", "description": "Sold by weight, priced per kilogram."},
 }
+
+# Claude's limit on fields with a union type (anyOf or a type array) across the
+# strict schemas of one request; a schema over it fails before it is read.
+MAX_UNION_FIELDS = 16
 
 RECEIPT_JSON_SCHEMA: dict = {
     "type": "object",

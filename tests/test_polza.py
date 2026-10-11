@@ -13,11 +13,17 @@ from tricount_but_better.config import Settings
 from tricount_but_better.vlm import (
     KnownProduct,
     KnownShop,
+    ParsedItem,
     ScanHints,
     VlmError,
     VlmUnavailable,
     get_parser,
     polza,
+)
+from tricount_but_better.vlm.schema import (
+    MAX_UNION_FIELDS,
+    PRICE_LIST_JSON_SCHEMA,
+    RECEIPT_JSON_SCHEMA,
 )
 
 
@@ -84,6 +90,44 @@ async def test_polza_receipt_request(monkeypatch: pytest.MonkeyPatch) -> None:
             "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(second).decode()},
         },
     ]
+
+
+def test_agent_sdk_model_left_in_the_environment_falls_back_to_qwen(monkeypatch) -> None:
+    monkeypatch.setenv("VLM_MODEL", "claude-sonnet-5")
+    assert Settings().vlm_model == "qwen/qwen3.5-9b"
+    monkeypatch.setenv("VLM_MODEL", "anthropic/claude-sonnet-5")
+    assert Settings().vlm_model == "anthropic/claude-sonnet-5"
+
+
+def _union_fields(node: object) -> int:
+    if isinstance(node, list):
+        return sum(_union_fields(item) for item in node)
+    if not isinstance(node, dict):
+        return 0
+    own = isinstance(node.get("type"), list) or "anyOf" in node
+    return own + sum(_union_fields(value) for value in node.values())
+
+
+@pytest.mark.parametrize("schema", [RECEIPT_JSON_SCHEMA, PRICE_LIST_JSON_SCHEMA])
+def test_schemas_stay_within_the_structured_output_union_limit(schema: dict) -> None:
+    assert _union_fields(schema) <= MAX_UNION_FIELDS
+
+
+def test_empty_levels_read_as_none() -> None:
+    item = ParsedItem.model_validate(
+        {
+            "name": "БАНАНЫ",
+            "kind": "бананы",
+            "variety": "",
+            "brand": " ",
+            "size_amount": "",
+            "size_unit": "",
+            "by_weight": True,
+            "total": "89.90",
+        }
+    )
+    assert (item.kind, item.variety, item.brand) == ("бананы", None, None)
+    assert (item.size_amount, item.size_unit, item.by_weight) == (None, None, True)
 
 
 @pytest.mark.asyncio

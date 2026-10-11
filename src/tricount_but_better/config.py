@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+log = logging.getLogger(__name__)
+
+DEFAULT_VLM_MODEL = "qwen/qwen3.5-9b"
 
 
 class Settings(BaseSettings):
@@ -41,7 +46,7 @@ class Settings(BaseSettings):
     # --- VLM ---
     # Polza OpenAI-compatible API. A separate key file supports deployments
     # whose root-owned EnvironmentFile still contains the old disabled flag.
-    vlm_model: str = "qwen/qwen3.5-9b"
+    vlm_model: str = DEFAULT_VLM_MODEL
     vlm_timeout_seconds: int = 180
     # How many of the team's most recently bought goods the model is shown to
     # match receipt lines against. Each costs a dozen or so prompt tokens.
@@ -57,6 +62,20 @@ class Settings(BaseSettings):
     # Who push services contact about abuse. Unset, the first https CORS origin.
     vapid_subject: str | None = None
     push_timeout_seconds: float = 10.0
+
+    @field_validator("vlm_model")
+    @classmethod
+    def _drop_agent_sdk_model(cls, v: str) -> str:
+        # Deployments set up for the old Claude Agent SDK keep VLM_MODEL=claude-...
+        # in the root-owned EnvironmentFile, which a release never rewrites. A
+        # Polza model id always names its vendor ("qwen/..."), so a bare Claude
+        # id is that leftover: Polza would quietly send every scan to Claude.
+        if v.startswith("claude-") and "/" not in v:
+            log.warning(
+                "ignoring VLM_MODEL=%s from the Agent SDK setup; using %s", v, DEFAULT_VLM_MODEL
+            )
+            return DEFAULT_VLM_MODEL
+        return v
 
     @field_validator("cors_origins", mode="before")
     @classmethod
