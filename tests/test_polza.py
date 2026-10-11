@@ -130,6 +130,78 @@ async def test_polza_errors_do_not_expose_response(
     assert "secret request contents" not in str(caught.value)
 
 
+def _sse(*chunks: dict | str) -> httpx.Response:
+    """A streamed completion: each chunk as a server-sent event, then [DONE]."""
+    events = [chunk if isinstance(chunk, str) else f"data: {json.dumps(chunk)}" for chunk in chunks]
+    body = "\n\n".join([*events, "data: [DONE]"]) + "\n\n"
+    return httpx.Response(200, headers={"content-type": "text/event-stream"}, text=body)
+
+
+def _delta(content: str | None = None, finish: str | None = None, **delta: str) -> dict:
+    if content is not None:
+        delta["content"] = content
+    return {"choices": [{"index": 0, "delta": delta, "finish_reason": finish}]}
+
+
+def _stream_into(monkeypatch: pytest.MonkeyPatch, response: httpx.Response, seen: list) -> None:
+    def answer(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        return response
+
+    client_type = httpx.AsyncClient
+    monkeypatch.setattr(
+        polza.httpx,
+        "AsyncClient",
+        lambda **kwargs: client_type(transport=httpx.MockTransport(answer), **kwargs),
+    )
+
+
+@pytest.mark.asyncio
+async def test_polza_streams_and_joins_the_answer(monkeypatch: pytest.MonkeyPatch) -> None:
+    receipt = json.dumps({"merchant": "Shop", "items": [{"name": "Milk", "total": "104.50"}]})
+    seen: list = []
+    _stream_into(
+        monkeypatch,
+        _sse(
+            ": OPENROUTER PROCESSING",
+            _delta(reasoning="Reading the lines first."),
+            _delta(receipt[:20]),
+            _delta(receipt[20:]),
+            _delta("", finish="stop"),
+        ),
+        seen,
+    )
+
+    result = await get_parser(Settings(polza_api_key="test-key")).parse([b"image"])
+
+    assert seen[0]["stream"] is True
+    assert result.receipt.merchant == "Shop"
+    assert str(result.receipt.items[0].total) == "104.50"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("chunks", "message"),
+    [
+        (
+            [_delta('{"items": ['), {"error": {"code": 502, "message": "Provider disconnected"}}],
+            r"Polza API error \(502\)",
+        ),
+        ([_delta('{"items": ['), _delta("", finish="error")], "Polza API error"),
+        ([_delta('{"items": ['), _delta("", finish="length")], "cut off"),
+        ([_delta("", finish="stop")], "empty response"),
+    ],
+)
+async def test_polza_stream_failures(
+    monkeypatch: pytest.MonkeyPatch, chunks: list, message: str
+) -> None:
+    _stream_into(monkeypatch, _sse(*chunks), [])
+
+    with pytest.raises(VlmError, match=message) as caught:
+        await get_parser(Settings(polza_api_key="test-key")).parse([b"image"])
+    assert "Provider disconnected" not in str(caught.value)
+
+
 @pytest.mark.asyncio
 async def test_polza_lists_known_shops_and_goods_and_reads_matches(
     monkeypatch: pytest.MonkeyPatch,

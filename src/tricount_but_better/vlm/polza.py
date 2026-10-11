@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
+import logging
 from datetime import date
 
 import httpx
@@ -15,6 +17,8 @@ from .prompt import PRICE_LIST_PROMPT, SYSTEM_PROMPT, hints_text
 from .schema import PRICE_LIST_JSON_SCHEMA, RECEIPT_JSON_SCHEMA, ParsedPriceList, ParsedReceipt
 
 API_URL = "https://polza.ai/api/v1/chat/completions"
+
+log = logging.getLogger(__name__)
 
 
 def _known(hints: ScanHints | None) -> str:
@@ -106,35 +110,92 @@ class PolzaReceiptParser:
                 "type": "json_schema",
                 "json_schema": {"name": schema_name, "strict": True, "schema": schema},
             },
+            # Streamed, tokens keep the connection busy while the model works. A
+            # long receipt read in silence can outlast a gateway on the way to
+            # the provider, and Polza then answers 502.
+            "stream": True,
         }
+        timeout = self._settings.vlm_timeout_seconds
         try:
-            async with httpx.AsyncClient(timeout=self._settings.vlm_timeout_seconds) as client:
-                response = await client.post(
-                    API_URL,
-                    headers={"Authorization": f"Bearer {api_key}"},
-                    json=request,
-                )
-        except httpx.TimeoutException as exc:
+            async with (
+                # A stream that keeps trickling must still end in time.
+                asyncio.timeout(timeout),
+                httpx.AsyncClient(timeout=timeout) as client,
+                client.stream(
+                    "POST", API_URL, headers={"Authorization": f"Bearer {api_key}"}, json=request
+                ) as response,
+            ):
+                if response.is_error:
+                    await response.aread()
+                    _raise_for_status(response, what)
+                if response.headers.get("content-type", "").startswith("text/event-stream"):
+                    answer, finish = await _streamed(response, what)
+                else:
+                    await response.aread()
+                    answer, finish = _completed(response, what)
+        except (TimeoutError, httpx.TimeoutException) as exc:
             raise VlmError(f"the model took too long to read this {what}") from exc
         except httpx.RequestError as exc:
             raise VlmUnavailable("could not reach Polza API") from exc
 
-        if response.status_code in (401, 403):
-            raise VlmUnavailable("the Polza API key was rejected")
-        if response.status_code == 429:
-            raise VlmError("rate limited by Polza; try again shortly")
-        if response.is_error:
-            raise VlmError(f"Polza API error ({response.status_code})")
-
-        try:
-            choice = response.json()["choices"][0]
-            if choice.get("finish_reason") == "length":
-                raise VlmError("the model response was cut off")
-            if choice.get("finish_reason") == "content_filter":
-                raise VlmError("the model declined to read this image")
-            answer = choice["message"]["content"]
-        except (AttributeError, KeyError, IndexError, TypeError, ValueError) as exc:
-            raise VlmError(f"the model returned an invalid {what}") from exc
+        if finish == "length":
+            raise VlmError("the model response was cut off")
+        if finish == "content_filter":
+            raise VlmError("the model declined to read this image")
+        if finish == "error":
+            raise VlmError("Polza API error")
         if not isinstance(answer, str) or not answer.strip():
             raise VlmError("the model returned an empty response")
         return answer
+
+
+def _raise_for_status(response: httpx.Response, what: str) -> None:
+    # Polza's reason goes to the server log only: an error body can echo the
+    # request, so the user sees just the status.
+    log.warning(
+        "Polza %s request failed (%s): %s", what, response.status_code, response.text[:2000]
+    )
+    if response.status_code in (401, 403):
+        raise VlmUnavailable("the Polza API key was rejected")
+    if response.status_code == 429:
+        raise VlmError("rate limited by Polza; try again shortly")
+    raise VlmError(f"Polza API error ({response.status_code})")
+
+
+def _completed(response: httpx.Response, what: str) -> tuple[object, str | None]:
+    """The answer and finish reason of a whole, unstreamed completion."""
+    try:
+        choice = response.json()["choices"][0]
+        return choice["message"]["content"], choice.get("finish_reason")
+    except (AttributeError, KeyError, IndexError, TypeError, ValueError) as exc:
+        raise VlmError(f"the model returned an invalid {what}") from exc
+
+
+async def _streamed(response: httpx.Response, what: str) -> tuple[str, str | None]:
+    """The answer and finish reason of a streamed completion, from its content
+    deltas. Reasoning deltas are skipped; a provider failing mid-answer sends an
+    error chunk instead of an HTTP status."""
+    parts: list[str] = []
+    finish = None
+    async for line in response.aiter_lines():
+        # Blank lines separate events; ": ..." lines are keep-alive comments.
+        if not line.startswith("data:"):
+            continue
+        data = line.removeprefix("data:").strip()
+        if data == "[DONE]":
+            break
+        try:
+            chunk = json.loads(data)
+            if chunk.get("error"):
+                log.warning("Polza %s stream failed: %s", what, data[:2000])
+                code = chunk["error"].get("code")
+                status = f" ({code})" if isinstance(code, int) else ""
+                raise VlmError(f"Polza API error{status}")
+            for choice in chunk.get("choices") or []:
+                content = (choice.get("delta") or {}).get("content")
+                if isinstance(content, str):
+                    parts.append(content)
+                finish = choice.get("finish_reason") or finish
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise VlmError(f"the model returned an invalid {what}") from exc
+    return "".join(parts), finish
