@@ -69,13 +69,13 @@ async def test_polza_receipt_request(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.receipt.merchant == "Shop"
     assert result.receipt.purchased_at.isoformat() == "2026-09-01"
     assert str(result.receipt.items[0].total) == "104.50"
-    assert result.model == "openai/gpt-6-luna-pro"
+    assert result.model == "qwen/qwen3.8-omni-flash"
     assert len(seen) == 1
     request = seen[0]
     assert str(request.url) == polza.API_URL
     assert request.headers["authorization"] == "Bearer test-key"
     body = json.loads(request.content)
-    assert body["model"] == "openai/gpt-6-luna-pro"
+    assert body["model"] == "qwen/qwen3.8-omni-flash"
     assert body["response_format"]["json_schema"]["strict"] is True
     assert "merchant" in body["response_format"]["json_schema"]["schema"]["required"]
     assert body["response_format"]["json_schema"]["schema"]["properties"]["items"]
@@ -94,7 +94,7 @@ async def test_polza_receipt_request(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_agent_sdk_model_left_in_the_environment_falls_back_to_the_default(monkeypatch) -> None:
     monkeypatch.setenv("VLM_MODEL", "claude-sonnet-5")
-    assert Settings().vlm_model == "openai/gpt-6-luna-pro"
+    assert Settings().vlm_model == "qwen/qwen3.8-omni-flash"
     monkeypatch.setenv("VLM_MODEL", "anthropic/claude-sonnet-5")
     assert Settings().vlm_model == "anthropic/claude-sonnet-5"
 

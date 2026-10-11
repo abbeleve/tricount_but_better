@@ -64,7 +64,7 @@ Polza API key is configured on the server.
 Edit `/opt/tricount/.env` on the server and set:
 
 ```dotenv
-VLM_MODEL=openai/gpt-6-luna-pro
+VLM_MODEL=qwen/qwen3.8-omni-flash
 POLZA_API_KEY=pza_...
 ```
 

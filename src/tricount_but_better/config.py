@@ -12,7 +12,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 log = logging.getLogger(__name__)
 
-DEFAULT_VLM_MODEL = "openai/gpt-6-luna-pro"
+DEFAULT_VLM_MODEL = "qwen/qwen3.8-omni-flash"
 
 
 class Settings(BaseSettings):
@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     def _drop_agent_sdk_model(cls, v: str) -> str:
         # Deployments set up for the old Claude Agent SDK keep VLM_MODEL=claude-...
         # in the root-owned EnvironmentFile, which a release never rewrites. A
-        # Polza model id always names its vendor ("openai/..."), so a bare Claude
+        # Polza model id always names its vendor ("qwen/..."), so a bare Claude
         # id is that leftover: Polza would quietly send every scan to Claude.
         if v.startswith("claude-") and "/" not in v:
             log.warning(
