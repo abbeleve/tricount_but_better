@@ -46,7 +46,8 @@ Photograph the receipt, and a vision model reads it into editable line items.
   prints none, you choose. The codes a till prints in front of a name — the
   "[M+]0829" on marked goods, a leading article number — are not part of it,
   so three packs of one good are one good. The product page shows what a good
-  is recognised as. The kinds of goods the team already has are offered to the
+  is recognised as, as a tree: the kind, the variety under it, then the brand
+  and the pack size. The kinds of goods the team already has are offered to the
   model, so it keeps to the same words.
   Shops name the same good differently, so two products can be **merged**.
   Prices can also be added and edited by hand — a price seen on a shelf, a
