@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Suspense } from "react";
 import { Navigate, Route, BrowserRouter as Router, Routes, useLocation } from "react-router-dom";
 import { LanguageProvider, useI18n } from "./lib/i18n";
 import { AppearanceProvider } from "./hooks/useAppearance";
@@ -7,7 +8,6 @@ import Appearance from "./pages/Appearance";
 import Intro from "./components/Intro";
 import { NotificationBridge } from "./components/NotificationBridge";
 import Welcome from "./components/Welcome";
-import ExpenseForm from "./pages/ExpenseForm";
 import PlanForm from "./pages/PlanForm";
 import JoinTeam from "./pages/JoinTeam";
 import Login from "./pages/Login";
@@ -15,6 +15,13 @@ import Notifications from "./pages/Notifications";
 import Register from "./pages/Register";
 import TeamDetail from "./pages/TeamDetail";
 import Teams from "./pages/Teams";
+import { lazyPage } from "./lib/lazyPage";
+
+// Opened from another screen rather than landed on, so kept out of the first
+// download: the expense form carries the receipt scanner and price comparison.
+const ExpenseForm = lazyPage(() => import("./pages/ExpenseForm"));
+const ProductPage = lazyPage(() => import("./pages/ProductPage"));
+const PriceImport = lazyPage(() => import("./pages/PriceImport"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,18 +35,20 @@ const queryClient = new QueryClient({
   },
 });
 
+function Loading() {
+  const { t } = useI18n();
+  return (
+    <div className="grid min-h-dvh place-items-center">
+      <span className="sr-only">{t("Loading")}</span>
+    </div>
+  );
+}
+
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, ready } = useAuth();
-  const { t } = useI18n();
   const location = useLocation();
 
-  if (!ready) {
-    return (
-      <div className="grid min-h-dvh place-items-center">
-        <span className="sr-only">{t("Loading")}</span>
-      </div>
-    );
-  }
+  if (!ready) return <Loading />;
   // Remember where they were headed so the invite link still works after login.
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   return <>{children}</>;
@@ -70,11 +79,19 @@ export default function App() {
                 <Route path="/teams/:teamId/plans/:planId" element={<RequireAuth><PlanForm /></RequireAuth>} />
                 <Route
                   path="/teams/:teamId/expenses/new"
-                  element={<RequireAuth><ExpenseForm /></RequireAuth>}
+                  element={<RequireAuth><Suspense fallback={<Loading />}><ExpenseForm /></Suspense></RequireAuth>}
                 />
                 <Route
                   path="/teams/:teamId/expenses/:expenseId"
-                  element={<RequireAuth><ExpenseForm /></RequireAuth>}
+                  element={<RequireAuth><Suspense fallback={<Loading />}><ExpenseForm /></Suspense></RequireAuth>}
+                />
+                <Route
+                  path="/teams/:teamId/prices/import"
+                  element={<RequireAuth><Suspense fallback={<Loading />}><PriceImport /></Suspense></RequireAuth>}
+                />
+                <Route
+                  path="/teams/:teamId/goods/:productId"
+                  element={<RequireAuth><Suspense fallback={<Loading />}><ProductPage /></Suspense></RequireAuth>}
                 />
                 <Route path="/join/:code" element={<RequireAuth><JoinTeam /></RequireAuth>} />
                 <Route path="/appearance" element={<RequireAuth><Appearance /></RequireAuth>} />

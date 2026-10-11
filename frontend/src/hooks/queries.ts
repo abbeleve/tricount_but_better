@@ -1,6 +1,6 @@
 /** Server state. One key namespace per resource so invalidation stays obvious. */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type {
   Balances,
@@ -11,8 +11,16 @@ import type {
   Invite,
   NotificationList,
   PlannedExpense,
+  ListedPrice,
+  PriceAnswer,
+  ProductDetail,
+  ProductFilter,
+  ProductList,
+  ProductSort,
+  Savings,
   ServerConfig,
   Settlement,
+  Shop,
   Spending,
   TeamDetail,
   TeamSummary,
@@ -33,6 +41,9 @@ export const keys = {
   plan: (id: string, pid: string) => ["team", id, "plan", pid] as const,
   settlements: (id: string) => ["team", id, "settlements"] as const,
   invites: (id: string) => ["team", id, "invites"] as const,
+  shops: (id: string) => ["team", id, "shops"] as const,
+  products: (id: string) => ["team", id, "products"] as const,
+  product: (id: string, pid: string) => ["team", id, "products", pid] as const,
   notifications: ["notifications"] as const,
 };
 
@@ -207,5 +218,202 @@ export function useMarkNotificationsRead() {
       );
     },
     onError: () => client.invalidateQueries({ queryKey: keys.notifications }),
+  });
+}
+
+/* ------------------------------------------------------- shops and goods */
+
+export const useShops = (teamId: string) =>
+  useQuery({
+    queryKey: keys.shops(teamId),
+    queryFn: () => api<Shop[]>(`/teams/${teamId}/shops`),
+  });
+
+/** Prices hang off shops and goods, so a change to either refreshes both. */
+function useCatalogInvalidation(teamId: string) {
+  const client = useQueryClient();
+  return () => {
+    client.invalidateQueries({ queryKey: keys.shops(teamId) });
+    client.invalidateQueries({ queryKey: keys.products(teamId) });
+  };
+}
+
+export function useCreateShop(teamId: string) {
+  const client = useQueryClient();
+  const invalidate = useCatalogInvalidation(teamId);
+  return useMutation({
+    mutationFn: (body: { name: string; address?: string; alias?: string | null }) =>
+      api<Shop>(`/teams/${teamId}/shops`, { body }),
+    onSuccess: (shop) => {
+      client.setQueryData<Shop[]>(keys.shops(teamId), (current) =>
+        [...(current ?? []).filter((item) => item.id !== shop.id), shop]
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      );
+      invalidate();
+    },
+  });
+}
+
+export function useUpdateShop(teamId: string) {
+  const invalidate = useCatalogInvalidation(teamId);
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; name?: string; address?: string }) =>
+      api<Shop>(`/teams/${teamId}/shops/${id}`, { method: "PATCH", body }),
+    onSuccess: invalidate,
+  });
+}
+
+/** Remember another name receipts print for a shop, so the next scan matches. */
+export function useAddShopAlias(teamId: string) {
+  const invalidate = useCatalogInvalidation(teamId);
+  return useMutation({
+    mutationFn: ({ id, alias }: { id: string; alias: string }) =>
+      api<Shop>(`/teams/${teamId}/shops/${id}/aliases`, { body: { alias } }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteShop(teamId: string) {
+  const invalidate = useCatalogInvalidation(teamId);
+  return useMutation({
+    mutationFn: (id: string) => api<void>(`/teams/${teamId}/shops/${id}`, { method: "DELETE" }),
+    onSuccess: invalidate,
+  });
+}
+
+export interface ProductQuery {
+  q?: string;
+  ids?: string[];
+  shopId?: string;
+  filter?: ProductFilter;
+  sort?: ProductSort;
+  limit?: number;
+}
+
+export const useProducts = (teamId: string, query: ProductQuery, enabled = true) =>
+  useQuery({
+    queryKey: [...keys.products(teamId), "list", query],
+    queryFn: ({ signal }) => {
+      const params = new URLSearchParams();
+      if (query.q) params.set("q", query.q);
+      query.ids?.forEach((id) => params.append("ids", id));
+      if (query.shopId) params.set("shop_id", query.shopId);
+      if (query.filter) params.set("filter", query.filter);
+      if (query.sort) params.set("sort", query.sort);
+      params.set("limit", String(query.limit ?? 100));
+      return api<ProductList>(`/teams/${teamId}/products?${params}`, { signal });
+    },
+    enabled,
+    // Typing in the search keeps the last results on screen instead of a flash.
+    placeholderData: keepPreviousData,
+  });
+
+/**
+ * A product added by hand, with the first price someone knows for it.
+ * Two requests, so a refused price still leaves the product to edit.
+ */
+export function useCreateProduct(teamId: string) {
+  const invalidate = useCatalogInvalidation(teamId);
+  return useMutation({
+    mutationFn: async ({ name, shopId, regularPrice, observedOn }: {
+      name: string; shopId?: string; regularPrice?: number | null; observedOn: string;
+    }) => {
+      const product = await api<ProductDetail>(`/teams/${teamId}/products`, { body: { name } });
+      if (shopId && regularPrice) {
+        return api<ProductDetail>(`/teams/${teamId}/products/${product.id}/prices/${shopId}`, {
+          method: "PUT",
+          body: { regular_price: regularPrice, sale_price: null, sale_until: null, observed_on: observedOn },
+        });
+      }
+      return product;
+    },
+    onSettled: invalidate,
+  });
+}
+
+/** Save checked prices read off a screenshot as one shop's prices. */
+export function useImportPrices(teamId: string) {
+  const invalidate = useCatalogInvalidation(teamId);
+  return useMutation({
+    mutationFn: (body: { shop_id: string; observed_on: string; items: ListedPrice[] }) =>
+      api<{ saved: number; created: number }>(`/teams/${teamId}/prices/import`, { body }),
+    onSuccess: invalidate,
+  });
+}
+
+/** Under the products key, so every price change refreshes it too. */
+export const useSavings = (teamId: string) =>
+  useQuery({
+    queryKey: [...keys.products(teamId), "savings"],
+    queryFn: ({ signal }) => api<Savings>(`/teams/${teamId}/prices/savings`, { signal }),
+  });
+
+export const useProduct = (teamId: string, productId: string) =>
+  useQuery({
+    queryKey: keys.product(teamId, productId),
+    queryFn: () => api<ProductDetail>(`/teams/${teamId}/products/${productId}`),
+  });
+
+export function useProductMutations(teamId: string, productId: string) {
+  const client = useQueryClient();
+  const invalidate = useCatalogInvalidation(teamId);
+  const store = (product: ProductDetail) => {
+    client.setQueryData(keys.product(teamId, product.id), product);
+    invalidate();
+  };
+  const base = `/teams/${teamId}/products/${productId}`;
+  return {
+    rename: useMutation({
+      mutationFn: (name: string) => api<ProductDetail>(base, { method: "PATCH", body: { name } }),
+      onSuccess: store,
+    }),
+    merge: useMutation({
+      mutationFn: (intoId: string) =>
+        api<ProductDetail>(`${base}/merge`, { body: { into_id: intoId } }),
+      onSuccess: (product) => {
+        store(product);
+        // Expense lines now point at the other product.
+        client.invalidateQueries({ queryKey: keys.expenses(teamId) });
+      },
+    }),
+    remove: useMutation({
+      mutationFn: () => api<void>(base, { method: "DELETE" }),
+      onSuccess: invalidate,
+    }),
+    setPrice: useMutation({
+      mutationFn: ({ shopId, ...body }: {
+        shopId: string;
+        regular_price: number | null;
+        sale_price: number | null;
+        sale_until: string | null;
+        observed_on: string;
+      }) => api<ProductDetail>(`${base}/prices/${shopId}`, { method: "PUT", body }),
+      onSuccess: store,
+    }),
+    forgetPrice: useMutation({
+      mutationFn: (shopId: string) => api<void>(`${base}/prices/${shopId}`, { method: "DELETE" }),
+      onSuccess: invalidate,
+    }),
+  };
+}
+
+export function useReviewPrices(teamId: string) {
+  const invalidate = useCatalogInvalidation(teamId);
+  return useMutation({
+    mutationFn: (answers: PriceAnswer[]) =>
+      api<void>(`/teams/${teamId}/prices/review`, {
+        body: {
+          decisions: answers.map(({ change, decision, saleUntil }) => ({
+            product_id: change.product_id,
+            shop_id: change.shop_id,
+            observed_on: change.observed_on,
+            price: change.price,
+            regular_price: change.regular_price,
+            decision,
+            sale_until: decision === "sale" ? saleUntil || null : null,
+          })),
+        },
+      }),
+    onSuccess: invalidate,
   });
 }

@@ -4,12 +4,25 @@ import { Button, Card, FormError, Skeleton, cx } from "./ui";
 import { useServerConfig } from "../hooks/queries";
 import { ApiError, api } from "../lib/api";
 import { useI18n } from "../lib/i18n";
-import type { ParsedReceiptItem, ReceiptScan } from "../lib/types";
+import type { ReceiptScan } from "../lib/types";
 
-interface Props {
+/** What the scanner says, for a scan that is not a receipt. */
+export interface ScannerCopy {
+  title: string;
+  intro: string;
+  read: string;
+  reading: string;
+}
+
+interface Props<T> {
   teamId: string;
   appendToExisting?: boolean;
-  onParsed: (receipt: ReceiptScan, items: ParsedReceiptItem[]) => void;
+  /** Where the photos go; the receipt reader unless told otherwise. */
+  path?: string;
+  /** Sent along with the images. */
+  body?: Record<string, unknown>;
+  copy?: ScannerCopy;
+  onParsed: (result: T) => void;
   onCancel: () => void;
 }
 
@@ -28,7 +41,9 @@ const TILE = cx(
  * shot per trip, so a long receipt needs several trips before anything is sent,
  * and a look at the thumbnails catches a blurred photo before the slow part.
  */
-export function ReceiptScanner({ teamId, appendToExisting = false, onParsed, onCancel }: Props) {
+export function ReceiptScanner<T = ReceiptScan>({
+  teamId, appendToExisting = false, path, body, copy, onParsed, onCancel,
+}: Props<T>) {
   const { t } = useI18n();
   const config = useServerConfig();
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -62,9 +77,9 @@ export function ReceiptScanner({ teamId, appendToExisting = false, onParsed, onC
         reader.onerror = () => reject(new Error("Could not read this photo."));
         reader.readAsDataURL(file);
       })));
-      return api<ReceiptScan>(`/teams/${teamId}/receipts`, { body: { images } });
+      return api<T>(path ?? `/teams/${teamId}/receipts`, { body: { ...body, images } });
     },
-    onSuccess: (receipt) => onParsed(receipt, receipt.items),
+    onSuccess: (result) => onParsed(result),
     onSettled: () => { scanLocked.current = false; },
   });
 
@@ -203,13 +218,13 @@ export function ReceiptScanner({ teamId, appendToExisting = false, onParsed, onC
     >
     <Card className={cx("p-4 sm:p-5 transition-shadow", dragging && "ring-2 ring-ink bg-surface-2")}>
       <div className="mb-1 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-body">{t("Scan a receipt")}</h2>
+        <h2 className="text-sm font-semibold text-body">{copy?.title ?? t("Scan a receipt")}</h2>
         <Button size="sm" variant="ghost" className="-mr-2" onClick={onCancel}>
           {t("Cancel")}
         </Button>
       </div>
       <p className="mb-4 text-[13px] text-muted">
-        {t("Photograph the whole receipt. A long one can take several photos — add them in order. Every line comes back editable, so you can fix anything the model misread.")}
+        {copy?.intro ?? t("Photograph the whole receipt. A long one can take several photos — add them in order. Every line comes back editable, so you can fix anything the model misread.")}
         {appendToExisting && <> {t("Scanned lines will be added to the ones already here.")}</>}
       </p>
 
@@ -354,7 +369,7 @@ export function ReceiptScanner({ teamId, appendToExisting = false, onParsed, onC
       {working ? (
         <div className="flex flex-col gap-3" aria-live="polite">
           <p className="text-sm text-muted">
-            {t("Reading the receipt…")}
+            {copy?.reading ?? t("Reading the receipt…")}
           </p>
           {/* The skeleton is shaped like the line list it will become. */}
           {[0, 1, 2, 3].map((i) => (
@@ -366,7 +381,7 @@ export function ReceiptScanner({ teamId, appendToExisting = false, onParsed, onC
         </div>
       ) : shots.length > 0 ? (
         <Button type="button" full disabled={pasting} onClick={() => upload.mutate(shots.map((s) => s.file))}>
-          {t(failed ? "Try again" : "Read the receipt")}
+          {failed ? t("Try again") : copy?.read ?? t("Read the receipt")}
         </Button>
       ) : (
         <>

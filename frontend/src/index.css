@@ -23,6 +23,11 @@
   and, in the balance meter, a position left or right of the centre line.
   Purple identifies spending history; dashed neutral lines show the previous period.
   Spending increases use red and decreases use green, accompanied by arrows and words.
+  Prices borrow that pair: green is the cheaper shop or a saving, red is paying
+  more. The text colours are the spending ones; the marks have their own steps,
+  because the dark-theme text colours fall outside the validator's lightness band
+  for marks and fail its colour-blind separation against each other. Marks
+  always sit beside a signed amount and a word ("cheapest", "more").
 
   SHAPE: exactly three radii. Cards 16px, controls 10px, chips fully round.
 
@@ -63,6 +68,8 @@
 
   --chart-spending: #8b3db8;    /* period spending, distinct from balance direction */
   --chart-bar: #52525b;         /* single-series magnitude bars */
+  --price-low-mark: #15803d;    /* cheaper: validator-approved against the dearer mark */
+  --price-high-mark: #dc2626;
 
   /* Status, kept separate from the money palette on purpose: orange already
      means "owes", so an error must not borrow it. */
@@ -131,6 +138,8 @@
 
   --chart-spending: #bd7fe3;
   --chart-bar: #a1a1aa;
+  --price-low-mark: #059669;
+  --price-high-mark: #ef4444;
 
   --danger: #f87171;
   --danger-soft: #450a0a;
@@ -167,6 +176,12 @@
   --color-spending-up-soft: var(--spending-up-soft);
   --color-spending-down: var(--spending-down);
   --color-spending-down-soft: var(--spending-down-soft);
+  --color-price-low: var(--spending-down);
+  --color-price-low-soft: var(--spending-down-soft);
+  --color-price-low-mark: var(--price-low-mark);
+  --color-price-high: var(--spending-up);
+  --color-price-high-soft: var(--spending-up-soft);
+  --color-price-high-mark: var(--price-high-mark);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
   --color-raised: var(--surface-raised);

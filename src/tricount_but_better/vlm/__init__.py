@@ -3,14 +3,29 @@
 from __future__ import annotations
 
 from ..config import Settings
-from .base import ParseResult, ReceiptParser, VlmError, VlmUnavailable
-from .schema import ParsedItem, ParsedReceipt
+from .base import (
+    KnownProduct,
+    KnownShop,
+    ParseResult,
+    PriceListResult,
+    ReceiptParser,
+    ScanHints,
+    VlmError,
+    VlmUnavailable,
+)
+from .schema import ParsedItem, ParsedPrice, ParsedPriceList, ParsedReceipt
 
 __all__ = [
+    "KnownProduct",
+    "KnownShop",
     "ParseResult",
     "ParsedItem",
+    "ParsedPrice",
+    "ParsedPriceList",
+    "PriceListResult",
     "ParsedReceipt",
     "ReceiptParser",
+    "ScanHints",
     "VlmError",
     "VlmUnavailable",
     "get_parser",

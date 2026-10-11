@@ -120,6 +120,72 @@ def main() -> int:
                 "shares": [{"user_id": actors["Andrey"]["id"]}, {"user_id": actors["Masha"]["id"]}],
             }
         )
+
+        def shop(name: str, alias: str) -> str:
+            response = client.post(
+                f"/api/teams/{team_id}/shops",
+                json={"name": name, "alias": alias},
+                headers=owner["headers"],
+            )
+            if response.status_code == 409:  # seeded before
+                shops = client.get(f"/api/teams/{team_id}/shops", headers=owner["headers"])
+                return next(s["id"] for s in shops.json() if s["name"] == name)
+            response.raise_for_status()
+            return response.json()["id"]
+
+        pyaterochka = shop("Пятёрочка", 'ООО "Агроторг"')
+        lenta = shop("Лента", 'ООО "Лента"')
+
+        def line(name: str, product: str, total: int, shares: list, **extra) -> dict:
+            return {
+                "name": name,
+                "product_name": product,
+                "total": total,
+                "shares": shares,
+                **extra,
+            }
+
+        # Two weeks ago at Lenta: the same goods, mostly cheaper, coffee on sale.
+        add(
+            {
+                "title": "Лента",
+                "payer_id": actors["Masha"]["id"],
+                "spent_at": str(today - timedelta(days=14)),
+                "split_mode": "items",
+                "shop_id": lenta,
+                "category_id": categories["Groceries"],
+                "items": [
+                    line("МОЛОКО ПРОСТОКВ 3,2% 1Л", "Milk 3.2% 1 L", 94_90, everyone),
+                    line("ХЛЕБ РЖАНОЙ", "Rye bread", 54_00, everyone),
+                    line("САЛФЕТКИ БУМ 100ШТ", "Paper napkins 100 pcs", 79_90, everyone),
+                    line(
+                        "КОФЕ ЗЕРНО 1КГ",
+                        "Coffee beans 1 kg",
+                        1_199_00,
+                        everyone,
+                        on_sale=True,
+                        regular_unit_price=1_599_00,
+                    ),
+                ],
+            },
+            "Masha",
+        )
+        # Ten days ago at Pyaterochka: the first prices seen there.
+        add(
+            {
+                "title": "Пятёрочка",
+                "payer_id": actors["Dima"]["id"],
+                "spent_at": str(today - timedelta(days=10)),
+                "split_mode": "items",
+                "shop_id": pyaterochka,
+                "category_id": categories["Groceries"],
+                "items": [
+                    line("Milk 3.2% 1L", "Milk 3.2% 1 L", 99_90, everyone),
+                    line("Coffee beans 1kg", "Coffee beans 1 kg", 1_499_00, everyone),
+                ],
+            },
+            "Dima",
+        )
         # The reason this app exists: Masha does not eat chicken.
         chicken_eaters = [
             {"user_id": actors["Andrey"]["id"]},
@@ -131,12 +197,20 @@ def main() -> int:
                 "payer_id": actors["Dima"]["id"],
                 "spent_at": str(today - timedelta(days=1)),
                 "split_mode": "items",
+                "shop_id": pyaterochka,
                 "category_id": categories["Groceries"],
                 "items": [
-                    {"name": "Chicken breast 0.482 kg", "total": 433_32, "shares": chicken_eaters},
-                    {"name": "Paper napkins 100pc", "total": 89_90, "shares": everyone},
-                    {"name": "Milk 3.2% 1L", "total": 104_50, "shares": everyone},
-                    {"name": "Rye bread", "total": 62_00, "shares": everyone},
+                    line(
+                        "Chicken breast 0.482 kg",
+                        "Chicken breast",
+                        433_32,
+                        chicken_eaters,
+                        quantity="0.482",
+                    ),
+                    line("Paper napkins 100pc", "Paper napkins 100 pcs", 89_90, everyone),
+                    # Up from 99.90 ten days ago: waits under Prices as "price changed".
+                    line("Milk 3.2% 1L", "Milk 3.2% 1 L", 104_50, everyone),
+                    line("Rye bread", "Rye bread", 62_00, everyone),
                     {
                         "name": "Oat milk (Masha)",
                         "total": 189_00,

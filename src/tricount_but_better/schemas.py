@@ -212,6 +212,14 @@ class ItemIn(BaseModel):
     unit_price: int = 0
     category_id: uuid.UUID | None = None
     shares: list[ShareIn] = Field(min_length=1)
+    # Price tracking, used when the expense has a shop. Without a product the
+    # line is matched to one, or a product is created named ``product_name``
+    # (else the line's own name). ``track=False`` keeps a line out of it.
+    product_id: uuid.UUID | None = None
+    product_name: str | None = Field(default=None, max_length=200)
+    track: bool = True
+    on_sale: bool = False
+    regular_unit_price: int | None = Field(default=None, gt=0)
 
     @model_validator(mode="after")
     def _unique_participants(self) -> Self:
@@ -229,6 +237,7 @@ class ExpenseBase(BaseModel):
     spent_at: date
     note: str = Field(default="", max_length=2000)
     category_id: uuid.UUID | None = None
+    shop_id: uuid.UUID | None = None
     split_mode: SplitMode = SplitMode.total
     total: int | None = Field(
         default=None, description="Total in minor units. Ignored when split_mode is 'items'."
@@ -280,6 +289,9 @@ class ExpenseItemOut(BaseModel):
     total: int
     category_id: uuid.UUID | None
     shares: list[ShareOut]
+    product_id: uuid.UUID | None = None
+    on_sale: bool = False
+    regular_unit_price: int | None = None
 
 
 class ExpenseOut(BaseModel):
@@ -292,17 +304,268 @@ class ExpenseOut(BaseModel):
     spent_at: date
     payer_id: uuid.UUID
     category_id: uuid.UUID | None
+    shop_id: uuid.UUID | None = None
     split_mode: SplitMode
     source: ExpenseSource
     receipt_id: uuid.UUID | None
     created_at: datetime
     shares: list[ShareOut]
     items: list[ExpenseItemOut]
+    # Only on a create or update: receipt prices that differ from what the shop's
+    # price was saved as, for the person who saved it to accept or dismiss.
+    price_changes: list[PriceChangeOut] = Field(default_factory=list)
 
 
 class ExpenseListOut(BaseModel):
     items: list[ExpenseOut]
     total_count: int
+
+
+# ---------------------------------------------------------------- shops and goods
+
+ShopName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
+ProductName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+PriceDecision = Literal["regular", "sale", "keep"]
+
+
+class ShopCreate(BaseModel):
+    name: ShopName
+    address: str = Field(default="", max_length=240)
+    # The name a scanned receipt printed, remembered so the next one matches.
+    # Generous on input and cut to 120 when stored: a printed legal name can be
+    # long, and refusing it would fail the shop rather than shorten an alias.
+    alias: str | None = Field(default=None, max_length=1000)
+
+
+class ShopUpdate(BaseModel):
+    name: ShopName | None = None
+    address: str | None = Field(default=None, max_length=240)
+
+
+class ShopAliasIn(BaseModel):
+    alias: str = Field(min_length=1, max_length=1000)
+
+
+class ShopOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    address: str
+    aliases: list[str]
+    product_count: int = Field(description="Goods with a saved price at this shop.")
+    last_visit: date | None
+
+
+class ProductCreate(BaseModel):
+    name: ProductName
+
+
+class ProductUpdate(BaseModel):
+    name: ProductName
+
+
+class ProductMerge(BaseModel):
+    into_id: uuid.UUID
+
+
+class ShopPriceOut(BaseModel):
+    """One product at one shop. Prices are per unit, in minor units."""
+
+    shop_id: uuid.UUID
+    shop_name: str
+    price: int | None = Field(description="Today's price there: a running sale, else regular.")
+    regular_price: int | None
+    regular_on: date | None
+    sale_price: int | None
+    sale_on: date | None
+    sale_until: date | None
+    on_sale: bool = Field(description="A sale is running today.")
+    last_paid: int | None = None
+    last_paid_on: date | None = None
+    last_paid_on_sale: bool = False
+
+
+class PriceChangeOut(BaseModel):
+    """A receipt price that differs from the one saved for that shop."""
+
+    product_id: uuid.UUID
+    product_name: str
+    shop_id: uuid.UUID
+    shop_name: str
+    observed_on: date
+    price: int
+    on_sale: bool = Field(description="The line was marked as discounted.")
+    regular_price: int | None = Field(description="Undiscounted price printed on the receipt.")
+    saved_price: int | None = Field(description="The shop's price for that day before this.")
+    saved_on_sale: bool
+
+
+class PricePointOut(BaseModel):
+    expense_id: uuid.UUID
+    shop_id: uuid.UUID | None
+    shop_name: str | None
+    spent_at: date
+    price: int
+    quantity: Decimal
+    on_sale: bool
+
+
+class ProductAliasOut(BaseModel):
+    shop_id: uuid.UUID
+    shop_name: str
+    name: str
+
+
+class ProductOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    prices: list[ShopPriceOut] = Field(description="Cheapest first; shops with no price last.")
+    best_price: int | None
+    best_shop_id: uuid.UUID | None
+    last_bought_on: date | None
+    purchase_count: int
+    pending: list[PriceChangeOut]
+
+
+class ProductListOut(BaseModel):
+    items: list[ProductOut]
+    total_count: int
+
+
+class ProductDetailOut(ProductOut):
+    history: list[PricePointOut]
+    aliases: list[ProductAliasOut]
+
+
+class ShopPriceIn(BaseModel):
+    """What a shop charges, set by hand -- seen on a shelf, or corrected.
+
+    Replaces what is saved: leave ``sale_price`` out to end a sale.
+    """
+
+    regular_price: int | None = Field(default=None, gt=0)
+    sale_price: int | None = Field(default=None, gt=0)
+    sale_until: date | None = None
+    observed_on: date
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        if self.regular_price is None and self.sale_price is None:
+            raise ValueError("give a regular price, a sale price, or both")
+        if self.sale_until is not None:
+            if self.sale_price is None:
+                raise ValueError("a sale end date needs a sale price")
+            if self.sale_until < self.observed_on:
+                raise ValueError("a sale cannot end before it was seen")
+        return self
+
+
+class PriceDecisionIn(BaseModel):
+    """An answer to "this receipt has a new price -- update it?"."""
+
+    product_id: uuid.UUID
+    shop_id: uuid.UUID
+    observed_on: date
+    price: int = Field(gt=0)
+    regular_price: int | None = Field(default=None, gt=0)
+    decision: PriceDecision
+    sale_until: date | None = None
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        if self.sale_until is not None and self.sale_until < self.observed_on:
+            raise ValueError("a sale cannot end before it was seen")
+        return self
+
+
+class PriceReviewIn(BaseModel):
+    decisions: list[PriceDecisionIn] = Field(min_length=1, max_length=200)
+
+
+class ScannedPriceOut(BaseModel):
+    """One good read off a price screenshot, matched to the team's catalogue."""
+
+    name: str = Field(description="As shown.")
+    product_name: str | None = None
+    product_id: uuid.UUID | None = None
+    product_match: Literal["receipt", "model", "name"] | None = None
+    price: int | None = Field(description="Per piece or per kg; None if unreadable.")
+    regular_price: int | None = Field(description="A crossed-out or old price shown beside it.")
+    sale_until: date | None = None
+
+
+class PriceScanIn(BaseModel):
+    images: list[str] = Field(min_length=1)
+    # The viewer's date, so "until 20.10" without a year resolves the right way.
+    today: date | None = None
+
+
+class PriceScanOut(BaseModel):
+    shop: ShopMatchOut
+    currency: str
+    items: list[ScannedPriceOut]
+    notes: str | None = None
+
+
+class ListedPriceIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200, description="As shown; remembered per shop.")
+    product_id: uuid.UUID | None = None
+    product_name: str | None = Field(default=None, max_length=200)
+    price: int = Field(gt=0)
+    regular_price: int | None = Field(default=None, gt=0)
+    sale_until: date | None = None
+
+
+class PriceImportIn(BaseModel):
+    """Prices someone read off a shop's app, site, leaflet or shelf, and checked."""
+
+    shop_id: uuid.UUID
+    observed_on: date
+    items: list[ListedPriceIn] = Field(min_length=1, max_length=300)
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        for item in self.items:
+            if item.sale_until is not None and item.sale_until < self.observed_on:
+                raise ValueError(f"the sale on '{item.name}' ends before the prices were seen")
+        return self
+
+
+class PriceImportOut(BaseModel):
+    saved: int = Field(description="Prices saved.")
+    created: int = Field(description="Of those, goods that were new to the team.")
+
+
+class SavingsDayOut(BaseModel):
+    """One purchase date, shaped like ``DailySpendingOut`` so the same charts draw it."""
+
+    date: date
+    total: int = Field(description="Saved minus paid over usual that day; negative if over.")
+    expense_count: int = Field(description="Purchases compared that day.")
+
+
+class SavingsProductOut(BaseModel):
+    product_id: uuid.UUID
+    name: str
+    saved: int
+
+
+class SavingsOut(BaseModel):
+    """What tracked purchases cost against each good's usual price at the time.
+
+    The usual price is each known shop's regular price nearest the purchase
+    date (within 90 days), averaged over shops. ``saved`` sums the purchases
+    that came in under it, ``extra`` those that came in over it (as a positive
+    amount); ``on_sale`` is the part of ``saved`` from discounted lines.
+    """
+
+    currency: str
+    saved: int
+    extra: int
+    on_sale: int
+    compared: int = Field(description="Purchases with a usual price to compare with.")
+    purchases: int = Field(description="Purchases at a known shop, linked to a product.")
+    days: list[SavingsDayOut]
+    best: list[SavingsProductOut] = Field(description="Goods that saved the most, up to five.")
 
 
 # --------------------------------------------------------------- planned expenses
@@ -454,6 +717,25 @@ class ParsedItemOut(BaseModel):
     quantity: Decimal | None
     unit_price: int | None
     total: int
+    # A readable name for the good, for a new product; the model writes it.
+    product_name: str | None = None
+    product_id: uuid.UUID | None = None
+    # "receipt": this shop printed this line before and it was linked then.
+    # "model": the model recognised a known product. "name": same name.
+    product_match: Literal["receipt", "model", "name"] | None = None
+    on_sale: bool = False
+    regular_unit_price: int | None = None
+
+
+class ShopMatchOut(BaseModel):
+    """Which shop a receipt is from, or what to call it if it is a new one."""
+
+    shop_id: uuid.UUID | None = None
+    # "receipt": the printed name is a known shop's name or alias. "model": the
+    # model recognised a known shop from the list it was given.
+    matched_by: Literal["receipt", "model"] | None = None
+    name: str | None = None
+    address: str | None = None
 
 
 class ReceiptOut(BaseModel):
@@ -473,6 +755,7 @@ class ReceiptOut(BaseModel):
 
 class ReceiptScanOut(BaseModel):
     merchant: str | None = None
+    shop: ShopMatchOut = Field(default_factory=ShopMatchOut)
     purchased_at: date | None = None
     currency: str | None = None
     items: list[ParsedItemOut]

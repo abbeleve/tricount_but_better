@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     # whose root-owned EnvironmentFile still contains the old disabled flag.
     vlm_model: str = "qwen/qwen3.5-9b"
     vlm_timeout_seconds: int = 180
+    # How many of the team's most recently bought goods the model is shown to
+    # match receipt lines against. Each costs a dozen or so prompt tokens.
+    vlm_known_products: int = 200
     polza_api_key: str | None = None
     polza_api_key_file: Path = Path(".secrets/polza_api_key")
 

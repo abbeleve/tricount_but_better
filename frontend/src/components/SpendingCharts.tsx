@@ -3,14 +3,9 @@ import { useI18n } from "../lib/i18n";
 import { exponentFor, formatMoney } from "../lib/money";
 import { smoothChartPath } from "../lib/chart-path";
 import { chartDomain, type SpendingBucket, type SpendingPeriod } from "../lib/spending";
-import { periodLabel, spendingDate } from "../lib/spending-format";
+import { compactMoney, periodLabel, spendingDate } from "../lib/spending-format";
 import { cx } from "./ui";
 
-function compactMoney(minor: number, currency: string, language: string) {
-  return new Intl.NumberFormat(language === "ru" ? "ru-RU" : "en-US", {
-    style: "currency", currency, notation: "compact", maximumFractionDigits: 1,
-  }).format(minor / 10 ** exponentFor(currency));
-}
 function bucketLabel(bucket: SpendingBucket, period: SpendingPeriod, language: string) {
   return period === "year"
     ? spendingDate(bucket.start, language, { day: undefined, month: "short" })
@@ -19,10 +14,13 @@ function bucketLabel(bucket: SpendingBucket, period: SpendingPeriod, language: s
       : bucket.start.slice(8).replace(/^0/, "");
 }
 
-export function SpendingComparisonChart({ current, previous, currency, period }: {
+export function SpendingComparisonChart({ current, previous, currency, period, label }: {
   current: SpendingBucket[]; previous: SpendingBucket[]; currency: string; period: SpendingPeriod;
+  /** What the chart shows, for its accessible name; spending by default. */
+  label?: string;
 }) {
   const { t, language } = useI18n();
+  const title = label ?? t("Spending comparison chart");
   const id = useId().replace(/:/g, "");
   const initialSelected = Math.max(0, current.filter((b) => b.total !== null).length - 1);
   const [selected, setSelected] = useState(initialSelected);
@@ -68,8 +66,8 @@ export function SpendingComparisonChart({ current, previous, currency, period }:
         <span>{currency} · {t(period === "year" ? "Monthly totals" : "Daily totals")}</span>
       </div>
       <div ref={scroller} className="overflow-x-auto">
-        <svg viewBox={`0 0 ${chartWidth} 258`} className="block w-full min-w-[240px]" role="group" aria-label={t("Spending comparison chart")}>
-          <title>{t("Spending comparison chart")}</title>
+        <svg viewBox={`0 0 ${chartWidth} 258`} className="block w-full min-w-[240px]" role="group" aria-label={title}>
+          <title>{title}</title>
           <defs>
             <linearGradient id={`${id}-fill`} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="var(--chart-spending)" stopOpacity="0.2" />

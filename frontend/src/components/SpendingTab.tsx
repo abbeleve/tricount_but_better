@@ -17,7 +17,7 @@ const LABELS = { week: "Week", month: "Month", year: "Year" };
 const CURRENT = { week: "This week", month: "This month", year: "This year" };
 const PREVIOUS = { week: "Last week", month: "Last month", year: "Last year" };
 
-function PeriodPicker({ value, onChange, label }: {
+export function PeriodPicker({ value, onChange, label }: {
   value: SpendingPeriod; onChange: (value: SpendingPeriod) => void; label: string;
 }) {
   const { t } = useI18n();

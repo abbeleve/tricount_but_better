@@ -18,6 +18,9 @@ RECEIPT_JSON_SCHEMA: dict = {
     "additionalProperties": False,
     "required": [
         "merchant",
+        "shop_name",
+        "shop_address",
+        "shop_id",
         "purchased_at",
         "currency",
         "items",
@@ -29,7 +32,22 @@ RECEIPT_JSON_SCHEMA: dict = {
     "properties": {
         "merchant": {
             "type": ["string", "null"],
-            "description": "Shop or restaurant name exactly as printed.",
+            "description": "Seller name exactly as printed, often a legal entity.",
+        },
+        "shop_name": {
+            "type": ["string", "null"],
+            "description": (
+                "The name customers know the shop by -- its brand or sign, "
+                "e.g. 'Пятёрочка' rather than 'ООО \"Агроторг\"'. Null if not shown."
+            ),
+        },
+        "shop_address": {
+            "type": ["string", "null"],
+            "description": "Store address as printed, or null.",
+        },
+        "shop_id": {
+            "type": ["string", "null"],
+            "description": "Id of the known shop the receipt is from, or null.",
         },
         "purchased_at": {
             "type": ["string", "null"],
@@ -45,11 +63,40 @@ RECEIPT_JSON_SCHEMA: dict = {
             "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["name", "quantity", "unit_price", "total"],
+                "required": [
+                    "name",
+                    "quantity",
+                    "unit_price",
+                    "total",
+                    "product_name",
+                    "product_id",
+                    "discounted",
+                    "regular_price",
+                ],
                 "properties": {
                     "name": {
                         "type": "string",
                         "description": "Product name as printed, original language.",
+                    },
+                    "product_name": {
+                        "type": ["string", "null"],
+                        "description": (
+                            "The product as a person would write it on a shopping list: "
+                            "abbreviations expanded; brand, variety and pack size kept; "
+                            "same language as the receipt."
+                        ),
+                    },
+                    "product_id": {
+                        "type": ["string", "null"],
+                        "description": "Id of the same known product, or null.",
+                    },
+                    "discounted": {
+                        "type": "boolean",
+                        "description": "A discount, promo or loyalty price applies.",
+                    },
+                    "regular_price": {
+                        "type": ["string", "null"],
+                        "description": "Undiscounted unit price, if printed.",
                     },
                     "quantity": {
                         "type": ["string", "null"],
@@ -97,20 +144,45 @@ def _to_decimal(value: object) -> Decimal | None:
     return dec if dec.is_finite() else None
 
 
+def _text(v: object) -> object:
+    """Blank or non-string answers become None rather than failing the parse."""
+    if v is None or not isinstance(v, str | int):
+        return None
+    text = str(v).strip()
+    return text or None
+
+
 class ParsedItem(BaseModel):
     name: str
     quantity: Decimal | None = None
     unit_price: Decimal | None = None
     total: Decimal
+    product_name: str | None = None
+    product_id: str | None = None
+    discounted: bool = False
+    regular_price: Decimal | None = None
 
-    @field_validator("quantity", "unit_price", "total", mode="before")
+    @field_validator("quantity", "unit_price", "total", "regular_price", mode="before")
     @classmethod
     def _coerce(cls, v: object) -> object:
         return _to_decimal(v)
 
+    @field_validator("product_name", "product_id", mode="before")
+    @classmethod
+    def _coerce_text(cls, v: object) -> object:
+        return _text(v)
+
+    @field_validator("discounted", mode="before")
+    @classmethod
+    def _coerce_flag(cls, v: object) -> object:
+        return v is True or (isinstance(v, str) and v.strip().lower() == "true")
+
 
 class ParsedReceipt(BaseModel):
     merchant: str | None = None
+    shop_name: str | None = None
+    shop_address: str | None = None
+    shop_id: str | None = None
     purchased_at: date | None = None
     currency: str | None = None
     items: list[ParsedItem] = Field(default_factory=list)
@@ -123,6 +195,11 @@ class ParsedReceipt(BaseModel):
     @classmethod
     def _coerce_money(cls, v: object) -> object:
         return _to_decimal(v)
+
+    @field_validator("shop_name", "shop_address", "shop_id", mode="before")
+    @classmethod
+    def _coerce_text(cls, v: object) -> object:
+        return _text(v)
 
     @field_validator("purchased_at", mode="before")
     @classmethod
@@ -150,3 +227,130 @@ class ParsedReceipt(BaseModel):
     @property
     def items_total(self) -> Decimal:
         return sum((i.total for i in self.items), Decimal(0))
+
+
+# ------------------------------------------------------------------ price lists
+
+PRICE_LIST_JSON_SCHEMA: dict = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["shop_name", "shop_address", "shop_id", "currency", "items", "notes"],
+    "properties": {
+        "shop_name": {
+            "type": ["string", "null"],
+            "description": "The shop or chain the prices are from, as customers know it.",
+        },
+        "shop_address": {"type": ["string", "null"], "description": "Store address if shown."},
+        "shop_id": {
+            "type": ["string", "null"],
+            "description": "Id of the known shop these prices are from, or null.",
+        },
+        "currency": {
+            "type": ["string", "null"],
+            "description": "ISO 4217 code, e.g. RUB. Null if unclear.",
+        },
+        "items": {
+            "type": "array",
+            "description": "One entry per product shown with a price.",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "name",
+                    "product_name",
+                    "product_id",
+                    "price",
+                    "regular_price",
+                    "sale_until",
+                ],
+                "properties": {
+                    "name": {"type": "string", "description": "Product name as shown."},
+                    "product_name": {
+                        "type": ["string", "null"],
+                        "description": "Readable shopping-list name: brand, variety, pack size.",
+                    },
+                    "product_id": {
+                        "type": ["string", "null"],
+                        "description": "Id of the same known product, or null.",
+                    },
+                    "price": {
+                        "type": "string",
+                        "description": "Current price per piece, or per kg if sold by weight.",
+                    },
+                    "regular_price": {
+                        "type": ["string", "null"],
+                        "description": "Crossed-out or old price shown beside it, or null.",
+                    },
+                    "sale_until": {
+                        "type": ["string", "null"],
+                        "description": "Promotion end date as YYYY-MM-DD, or null.",
+                    },
+                },
+            },
+        },
+        "notes": {
+            "type": ["string", "null"],
+            "description": "Anything unreadable or ambiguous the human should check.",
+        },
+    },
+}
+
+
+def _to_date(value: object) -> date | None:
+    """A date the model wrote, or None: a bad date must not sink the whole parse."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        return date.fromisoformat(value.strip()[:10])
+    except ValueError:
+        return None
+
+
+class ParsedPrice(BaseModel):
+    name: str
+    product_name: str | None = None
+    product_id: str | None = None
+    price: Decimal | None = None
+    regular_price: Decimal | None = None
+    sale_until: date | None = None
+
+    @field_validator("price", "regular_price", mode="before")
+    @classmethod
+    def _coerce_money(cls, v: object) -> object:
+        return _to_decimal(v)
+
+    @field_validator("product_name", "product_id", mode="before")
+    @classmethod
+    def _coerce_text(cls, v: object) -> object:
+        return _text(v)
+
+    @field_validator("sale_until", mode="before")
+    @classmethod
+    def _coerce_date(cls, v: object) -> object:
+        return _to_date(v)
+
+
+class ParsedPriceList(BaseModel):
+    shop_name: str | None = None
+    shop_address: str | None = None
+    shop_id: str | None = None
+    currency: str | None = None
+    items: list[ParsedPrice] = Field(default_factory=list)
+    notes: str | None = None
+
+    @field_validator("shop_name", "shop_address", "shop_id", "notes", mode="before")
+    @classmethod
+    def _coerce_text(cls, v: object) -> object:
+        return _text(v)
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def _coerce_currency(cls, v: object) -> object:
+        if not v:
+            return None
+        code = str(v).strip().upper()
+        return code if len(code) == 3 and code.isalpha() else None

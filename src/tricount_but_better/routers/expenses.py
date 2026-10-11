@@ -9,13 +9,16 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
 
+from ..catalog import link_products, name_key, observation_for, record_observations
 from ..deps import CurrentUser, DbSession, Membership, TeamDep
 from ..models import (
     Category,
     Expense,
     ExpenseItem,
     ExpenseSource,
+    Product,
     Receipt,
+    Shop,
     SplitMode,
     TeamMember,
 )
@@ -26,9 +29,11 @@ from ..schemas import (
     ExpenseListOut,
     ExpenseOut,
     ExpenseUpdate,
+    PriceChangeOut,
     ShareOut,
 )
 from ..services import SplitError, apply_item_splits, apply_total_split, build_item_shares
+from .products import price_changes
 
 router = APIRouter(prefix="/teams/{team_id}/expenses", tags=["expenses"])
 
@@ -39,7 +44,7 @@ def _member_ids(session: DbSession, team_id: uuid.UUID) -> set[uuid.UUID]:
     )
 
 
-def _serialise(expense: Expense) -> ExpenseOut:
+def _serialise(expense: Expense, changes: list[PriceChangeOut] | None = None) -> ExpenseOut:
     return ExpenseOut(
         id=expense.id,
         team_id=expense.team_id,
@@ -50,6 +55,7 @@ def _serialise(expense: Expense) -> ExpenseOut:
         spent_at=expense.spent_at,
         payer_id=expense.payer_id,
         category_id=expense.category_id,
+        shop_id=expense.shop_id,
         split_mode=expense.split_mode,
         source=expense.source,
         receipt_id=expense.receipt_id,
@@ -69,9 +75,13 @@ def _serialise(expense: Expense) -> ExpenseOut:
                     ShareOut(user_id=s.user_id, amount=s.amount, weight=s.weight)
                     for s in item.shares
                 ],
+                product_id=item.product_id,
+                on_sale=item.on_sale,
+                regular_unit_price=item.regular_unit_price,
             )
             for item in expense.items
         ],
+        price_changes=changes or [],
     )
 
 
@@ -100,11 +110,29 @@ def _apply(
                 f"unknown category: {next(iter(unknown))}",
             )
 
+    if payload.shop_id is not None:
+        shop = session.get(Shop, payload.shop_id)
+        if shop is None or shop.team_id != team_id:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "unknown shop")
+    products = {i.product_id for i in payload.items if i.product_id is not None}
+    if products:
+        valid = set(
+            session.scalars(
+                select(Product.id).where(Product.team_id == team_id, Product.id.in_(products))
+            ).all()
+        )
+        if unknown := products - valid:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                f"unknown product: {next(iter(unknown))}",
+            )
+
     expense.title = payload.title.strip()
     expense.note = payload.note
     expense.spent_at = payload.spent_at
     expense.payer_id = payload.payer_id
     expense.category_id = payload.category_id
+    expense.shop_id = payload.shop_id
 
     try:
         if payload.split_mode is SplitMode.total:
@@ -122,6 +150,9 @@ def _apply(
                     unit_price=item.unit_price,
                     total=item.total,
                     category_id=item.category_id,
+                    product_id=item.product_id if item.track else None,
+                    on_sale=item.on_sale,
+                    regular_unit_price=item.regular_unit_price,
                     shares=build_item_shares(
                         {
                             s.user_id: Decimal(s.weight)
@@ -135,6 +166,43 @@ def _apply(
             apply_item_splits(expense)
     except SplitError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+
+
+def track_prices(
+    session: DbSession, expense: Expense, payload: ExpenseCreate | ExpenseUpdate
+) -> list[PriceChangeOut]:
+    """Link each bought line to a product and fold its price into the shop's.
+
+    Only an itemised expense with a shop tracks anything: a price means little
+    without the place it was charged. An unlinked line is matched by how this
+    shop's receipts printed it before, then by name; failing both it becomes a
+    new product. Returns the prices that differ from the saved ones.
+    """
+    if expense.shop_id is None or expense.split_mode is not SplitMode.items:
+        return []
+    shop_id = expense.shop_id
+    lines = [
+        (item, line)
+        for item, line in zip(expense.items, payload.items, strict=True)
+        if line.track and item.total > 0 and name_key(item.name)
+    ]
+    linked = link_products(
+        session,
+        expense.team_id,
+        shop_id,
+        [(item.name, item.product_id, line.product_name) for item, line in lines],
+    )
+    for (item, _), product_id in zip(lines, linked, strict=True):
+        item.product_id = product_id
+
+    seen = [
+        observation
+        for item, _ in lines
+        if (observation := observation_for(item, shop_id, expense.spent_at))
+    ]
+    pending = record_observations(session, seen)
+    session.flush()
+    return price_changes(session, expense.team_id, pending)
 
 
 def _check(user_id: uuid.UUID, member_ids: set[uuid.UUID]) -> bool:
@@ -205,10 +273,12 @@ def create_expense(
     )
     _apply(session, expense, payload, _member_ids(session, team.id), team.id)
     session.add(expense)
+    session.flush()
+    changes = track_prices(session, expense, payload)
     notifications = notify_expense_created(session, expense, user)
     session.commit()
     background.add_task(deliver_push, [n.id for n in notifications])
-    return _serialise(expense)
+    return _serialise(expense, changes)
 
 
 def _get(session: DbSession, team_id: uuid.UUID, expense_id: uuid.UUID) -> Expense:
@@ -241,8 +311,10 @@ def update_expense(
     session.flush()
 
     _apply(session, expense, payload, _member_ids(session, team.id), team.id)
+    session.flush()
+    changes = track_prices(session, expense, payload)
     session.commit()
-    return _serialise(expense)
+    return _serialise(expense, changes)
 
 
 @router.delete("/{expense_id}", status_code=status.HTTP_204_NO_CONTENT)

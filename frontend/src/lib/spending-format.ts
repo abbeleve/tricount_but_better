@@ -1,4 +1,12 @@
+import { exponentFor } from "./money";
 import { addDays, type SpendingPeriod } from "./spending";
+
+/** Axis labels: "1,2 тыс. ₽" rather than every digit. */
+export function compactMoney(minor: number, currency: string, language: string) {
+  return new Intl.NumberFormat(language === "ru" ? "ru-RU" : "en-US", {
+    style: "currency", currency, notation: "compact", maximumFractionDigits: 1,
+  }).format(minor / 10 ** exponentFor(currency));
+}
 
 export function spendingDate(value: string, language: string, options: Intl.DateTimeFormatOptions = {}) {
   return new Intl.DateTimeFormat(language === "ru" ? "ru-RU" : "en-US", {

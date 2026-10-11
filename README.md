@@ -22,6 +22,40 @@ Photograph the receipt, and a vision model reads it into editable line items.
 - **Spending analytics** — the Spending section in each team shows this week/month/year against the full previous period, a comparison chart, and history grouped by week, month, or year. Weeks start on Monday; totals use purchase dates and include refunds, excluding plans and paybacks.
 - **Planned purchases** — keep a shopping list with optional prices. Finish the
   purchase through the expense form; plans do not affect balances.
+- **Shops and prices** — say where an expense was bought, and every line's
+  price is remembered for that shop. A scanned receipt is matched to one of the
+  team's shops by the name it prints (or the model recognises it); an unknown
+  shop is offered as a new one, and the printed name is remembered so the next
+  receipt from there matches by itself. Under each line the form shows whether
+  another shop sells it cheaper, and a card shows what the same items would
+  have cost elsewhere. The **Prices** tab lists every good with its lowest price
+  and where, searchable in any case and by the name a till printed; each good
+  has a page with its price in every shop and a history of what was paid.
+  *How price changes work:* the first price seen at a shop is saved. A later
+  receipt with a different price asks whether it is the shop's **new price**,
+  a **sale** (kept beside the regular price with an end date — a week unless
+  you say — and the regular price returns by itself when it ends), or a one-off
+  to **keep** the old price for. An old receipt entered late never rolls a
+  price back. Unanswered questions wait on the Prices tab as "price changed".
+  Shops name the same good differently, so two products can be **merged**.
+  Prices can also be added and edited by hand — a price seen on a shelf, a
+  correction, or a sale with its end date — and a product can be added without
+  a receipt.
+  *Prices from a screenshot:* **Prices → From screenshot** reads a shop's app or
+  website, a promotion leaflet or photos of price tags. The model proposes the
+  shop, each good, its current price, a crossed-out old price and a promotion
+  end date; every row is checked and editable before **Save** stores them as
+  that shop's prices (a higher old price makes it a sale). Nothing is bought,
+  so no expense is added, and the names shown are remembered per shop so the
+  next screenshot links the same goods by itself.
+  *Savings:* each purchase is compared with that good's usual price at the time
+  (every known shop's regular price nearest the purchase date, averaged).
+  Coming in under it — a sale, or a cheaper shop — counts as saved; over it is
+  shown too, never hidden. Full price at the usual shop counts as zero. The
+  Prices tab shows the total, how much came from sales, and the Spending tab's
+  own week/month/year chart for it. Price differences on single items are shown
+  as information only; another shop is suggested only when a receipt would cost
+  at least 10% less there across three or more items.
 - **Team categories** — any member can create shared categories from the Categories tab or while entering an expense or planned purchase, with an optional emoji and a spending breakdown.
 - **Notifications** — when someone adds an expense (or finishes a planned
   purchase), everyone else in the team hears about it: who added what, the
@@ -145,17 +179,20 @@ src/tricount_but_better/
 ├── money.py        minor-unit arithmetic and the split algorithm
 ├── balances.py     net positions and debt simplification
 ├── services.py     keeps sum(shares) == total on every write
+├── catalog.py      shops and goods: name matching, saved prices, sales, price review
 ├── notifications.py  who hears about a new expense, and push delivery
 ├── webpush.py      Web Push: VAPID signing and aes128gcm encryption (RFC 8291/8292)
 ├── models.py       SQLAlchemy schema
 ├── images.py       in-memory validation, EXIF stripping, re-encoding
-├── routers/        auth, teams, invites, categories, expenses, plans, receipts, notifications
-└── vlm/            the receipt parser — schema, prompt, Polza provider
+├── routers/        auth, teams, invites, categories, expenses, plans, receipts, shops,
+│                   products (goods and prices), price_scans (screenshots), notifications
+└── vlm/            receipt and price-list reading — schemas, prompts, Polza provider
 frontend/src/
-├── lib/            API client, money formatting (mirrors money.py), glass palettes
+├── lib/            API client, money formatting (mirrors money.py), price comparison,
+│                   glass palettes
 ├── components/     UI primitives, charts, team tabs, receipt scanner, glass backdrop
-├── pages/          login, register, teams, team detail, expense and plan forms, appearance,
-│                   notifications
+├── pages/          login, register, teams, team detail, expense and plan forms, product
+│                   prices, appearance, notifications
 ├── index.css       design tokens
 └── glass.css       the optional glass look: retunes those tokens from a palette
 ```
