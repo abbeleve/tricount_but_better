@@ -60,7 +60,7 @@ DATABASE_URL=sqlite:///$ROOT/var/tricount.db
 JWT_SECRET=$SECRET
 CORS_ORIGINS=https://tricount-194-87-111-40.sslip.io
 DEFAULT_CURRENCY=RUB
-VLM_MODEL=openai/gpt-6-luna-pro
+VLM_MODEL=qwen/qwen3.8-omni-flash
 POLZA_API_KEY=
 ENVEOF
   echo "    generated a JWT secret; set the Polza key to enable receipt scanning"
