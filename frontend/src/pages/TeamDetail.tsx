@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { Suspense, useLayoutEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { AppShell, PageTitle } from "../components/Layout";
 import { BalancesTab } from "../components/BalancesTab";
@@ -10,11 +10,15 @@ import { Card, ErrorState, PRESS, Skeleton, cx } from "../components/ui";
 import { useTeam } from "../hooks/queries";
 import { ApiError } from "../lib/api";
 import { personWord, useI18n } from "../lib/i18n";
+import { lazyPage } from "../lib/lazyPage";
+
+const PricesTab = lazyPage(() => import("../components/PricesTab").then((m) => ({ default: m.PricesTab })));
 
 const TABS = [
   { id: "balances", label: "Balances" },
   { id: "expenses", label: "Expenses" },
   { id: "spending", label: "Spending" },
+  { id: "prices", label: "Prices" },
   { id: "people", label: "People" },
   { id: "categories", label: "Categories" },
 ] as const;
@@ -144,6 +148,11 @@ export default function TeamDetailPage() {
       {active === "balances" && <BalancesTab team={team.data} />}
       {active === "expenses" && <ExpensesTab team={team.data} />}
       {active === "spending" && <SpendingTab team={team.data} />}
+      {active === "prices" && (
+        <Suspense fallback={<Card className="p-5"><Skeleton className="h-48 w-full" /></Card>}>
+          <PricesTab team={team.data} />
+        </Suspense>
+      )}
       {active === "people" && <PeopleTab team={team.data} />}
       {active === "categories" && <CategoriesTab teamId={teamId} />}
 

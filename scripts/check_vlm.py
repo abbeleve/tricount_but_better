@@ -83,6 +83,7 @@ async def main() -> int:
 
     receipt = result.receipt
     print(f"merchant   : {receipt.merchant}")
+    print(f"shop       : {receipt.shop_name}  {receipt.shop_address or ''}".rstrip())
     print(f"date       : {receipt.purchased_at}")
     print(f"currency   : {receipt.currency}")
     print(f"printed    : {receipt.total}")
@@ -92,7 +93,10 @@ async def main() -> int:
     print(f"\n{len(receipt.items)} items:")
     for item in receipt.items:
         quantity = f" x{item.quantity}" if item.quantity is not None else ""
-        print(f"  {item.total:>10}  {item.name}{quantity}")
+        sale = f"  [sale, usually {item.regular_price}]" if item.discounted else ""
+        print(f"  {item.total:>10}  {item.name}{quantity}{sale}")
+        if item.product_name:
+            print(f"{'':14}-> {item.product_name}")
     if receipt.notes:
         print(f"\nnotes: {receipt.notes}")
     return 0

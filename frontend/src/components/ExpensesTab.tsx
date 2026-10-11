@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Card, Chip, EmptyState, ErrorState, Input, Money, ROW_PRESS, Skeleton, cx } from "./ui";
-import { useCategories, useExpenses, usePlans } from "../hooks/queries";
+import { useCategories, useExpenses, usePlans, useShops } from "../hooks/queries";
 import { useAuth } from "../hooks/useAuth";
 import { useI18n } from "../lib/i18n";
 import type { Expense, TeamDetail } from "../lib/types";
@@ -32,11 +32,14 @@ export function ExpensesTab({ team }: { team: TeamDetail }) {
   const expenses = useExpenses(team.id, search);
   const plans = usePlans(team.id);
   const categories = useCategories(team.id);
+  const shops = useShops(team.id);
 
   const nameOf = (id: string) =>
     team.members.find((m) => m.user_id === id)?.display_name ?? t("Someone");
   const emojiOf = (id: string | null) =>
     id ? (categories.data?.find((c) => c.id === id)?.emoji ?? "") : "";
+  const shopOf = (id: string | null) =>
+    id ? (shops.data?.find((shop) => shop.id === id)?.name ?? null) : null;
 
   const rows = expenses.data?.items ?? [];
 
@@ -146,6 +149,7 @@ export function ExpensesTab({ team }: { team: TeamDetail }) {
                       <p className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted">
                         <span className="truncate">
                           {iPaid ? t("You paid") : t("{name} paid", { name: nameOf(expense.payer_id) })}
+                          {shopOf(expense.shop_id) && ` · ${t("at {shop}", { shop: shopOf(expense.shop_id)! })}`}
                         </span>
                         {expense.split_mode === "items" && (
                           <Chip>{t("{count} items", { count: expense.items.length })}</Chip>

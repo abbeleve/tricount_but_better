@@ -105,6 +105,10 @@ class Team(Base):
     planned_expenses: Mapped[list[PlannedExpense]] = relationship(
         back_populates="team", cascade="all, delete-orphan"
     )
+    shops: Mapped[list[Shop]] = relationship(back_populates="team", cascade="all, delete-orphan")
+    products: Mapped[list[Product]] = relationship(
+        back_populates="team", cascade="all, delete-orphan"
+    )
 
 
 class TeamMember(Base):
@@ -161,6 +165,115 @@ class Category(Base):
     team: Mapped[Team] = relationship(back_populates="categories")
 
 
+class Shop(Base):
+    """A place the team buys from. What goods cost is remembered per shop.
+
+    ``key`` is ``catalog.shop_key(name)``: the comparison form, so "Пятёрочка"
+    and "ПЯТЕРОЧКА" are one shop. ``aliases`` are other names receipts print for
+    it -- often the legal entity -- learned when someone confirms which shop a
+    scanned receipt came from, so the next scan matches without asking.
+    """
+
+    __tablename__ = "shops"
+    __table_args__ = (UniqueConstraint("team_id", "key", name="uq_shop_key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("teams.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(120))
+    key: Mapped[str] = mapped_column(String(120))
+    address: Mapped[str] = mapped_column(String(240), default="")
+    aliases: Mapped[list[str]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    team: Mapped[Team] = relationship(back_populates="shops")
+
+
+class Product(Base):
+    """One good the team buys, so its price can be compared between shops.
+
+    ``key`` is ``catalog.name_key(name)``; it is unique per team, so two
+    receipts that name a good the same way land on the same product.
+    """
+
+    __tablename__ = "products"
+    __table_args__ = (UniqueConstraint("team_id", "key", name="uq_product_key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("teams.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    key: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    team: Mapped[Team] = relationship(back_populates="products")
+    aliases: Mapped[list[ProductAlias]] = relationship(
+        back_populates="product", cascade="all, delete-orphan"
+    )
+    prices: Mapped[list[ShopPrice]] = relationship(
+        back_populates="product", cascade="all, delete-orphan"
+    )
+
+
+class ProductAlias(Base):
+    """How one shop's receipts print a product.
+
+    A till prints the same good the same way every time, so once a line is
+    linked to a product, the next receipt from that shop links it unasked.
+    """
+
+    __tablename__ = "product_aliases"
+    __table_args__ = (UniqueConstraint("shop_id", "key", name="uq_product_alias"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("products.id", ondelete="CASCADE"), index=True
+    )
+    shop_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("shops.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(200))
+    key: Mapped[str] = mapped_column(String(200))
+
+    product: Mapped[Product] = relationship(back_populates="aliases")
+
+
+class ShopPrice(Base):
+    """The price the team has accepted for one product at one shop.
+
+    Receipt lines are what was *paid*; this is what the shop *charges*. They
+    are kept apart on purpose: a new price on a receipt only replaces this one
+    when someone says so, and a sale price sits next to the regular price with
+    an end date instead of overwriting it. ``reviewed_*`` is the newest receipt
+    price someone has already answered for, so the same receipt never asks twice.
+    Prices are per unit (a piece, or a kilogram for weighed goods), in minor units.
+    """
+
+    __tablename__ = "shop_prices"
+    __table_args__ = (UniqueConstraint("product_id", "shop_id", name="uq_shop_price"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("products.id", ondelete="CASCADE"), index=True
+    )
+    shop_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("shops.id", ondelete="CASCADE"), index=True
+    )
+    regular_price: Mapped[int | None] = mapped_column(BigInteger)
+    regular_on: Mapped[date | None] = mapped_column(Date)
+    sale_price: Mapped[int | None] = mapped_column(BigInteger)
+    sale_on: Mapped[date | None] = mapped_column(Date)
+    sale_until: Mapped[date | None] = mapped_column(Date)
+    reviewed_on: Mapped[date | None] = mapped_column(Date)
+    reviewed_price: Mapped[int | None] = mapped_column(BigInteger)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )
+
+    product: Mapped[Product] = relationship(back_populates="prices")
+    shop: Mapped[Shop] = relationship()
+
+
 class PlannedExpense(Base):
     """A shopping list awaiting a purchase; it has no ledger shares."""
 
@@ -199,6 +312,9 @@ class Expense(Base):
     category_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("categories.id", ondelete="SET NULL")
     )
+    shop_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("shops.id", ondelete="SET NULL"), index=True
+    )
 
     title: Mapped[str] = mapped_column(String(160))
     note: Mapped[str] = mapped_column(Text, default="")
@@ -218,6 +334,7 @@ class Expense(Base):
     team: Mapped[Team] = relationship(back_populates="expenses")
     payer: Mapped[User] = relationship(foreign_keys=[payer_id])
     category: Mapped[Category | None] = relationship()
+    shop: Mapped[Shop | None] = relationship()
     items: Mapped[list[ExpenseItem]] = relationship(
         back_populates="expense",
         cascade="all, delete-orphan",
@@ -245,6 +362,14 @@ class ExpenseItem(Base):
     category_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("categories.id", ondelete="SET NULL")
     )
+    # Price tracking. With the expense's shop, a linked line is one observation
+    # of what this product cost there. ``regular_unit_price`` is the undiscounted
+    # price a receipt printed against a discounted line, when it printed one.
+    product_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("products.id", ondelete="SET NULL"), index=True
+    )
+    on_sale: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    regular_unit_price: Mapped[int | None] = mapped_column(BigInteger)
 
     expense: Mapped[Expense] = relationship(back_populates="items")
     shares: Mapped[list[ItemShare]] = relationship(

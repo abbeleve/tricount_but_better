@@ -15,7 +15,10 @@ from .routers import (
     invites,
     notifications,
     planned_expenses,
+    price_scans,
+    products,
     receipts,
+    shops,
     spending,
     teams,
 )
@@ -49,6 +52,9 @@ def create_app() -> FastAPI:
         spending.router,
         planned_expenses.router,
         receipts.router,
+        shops.router,
+        products.router,
+        price_scans.router,
         notifications.router,
     ):
         app.include_router(router, prefix="/api")

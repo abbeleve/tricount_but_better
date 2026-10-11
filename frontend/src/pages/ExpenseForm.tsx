@@ -1,9 +1,14 @@
 import { useMutation } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppShell, PageTitle } from "../components/Layout";
 import { ReceiptScanner } from "../components/ReceiptScanner";
 import { CategoryPicker } from "../components/CategoryPicker";
+import { BasketComparison, PriceVerdict } from "../components/PriceViz";
+import { PriceReview } from "../components/PriceReview";
+import { ProductLinker, TagIcon } from "../components/ProductLinker";
+import { CameraIcon, ScanPanel } from "../components/ScanButton";
+import { ShopMatchCard, ShopPicker } from "../components/ShopPicker";
 import {
   Button,
   Card,
@@ -22,16 +27,23 @@ import {
   useDeleteExpense,
   useExpense,
   usePlan,
+  useProducts,
+  useReviewPrices,
   useServerConfig,
+  useShops,
   useTeam,
   useTeamInvalidation,
 } from "../hooks/queries";
 import { useAuth } from "../hooks/useAuth";
+import { useScanFlow } from "../hooks/useScanFlow";
 import { ApiError, api } from "../lib/api";
 import { todayLocal } from "../lib/dates";
 import { previewEqualSplit, toMajorString, toMinor } from "../lib/money";
 import { useI18n } from "../lib/i18n";
-import type { Expense, Member, ParsedReceiptItem, ReceiptScan } from "../lib/types";
+import { basketElsewhere, initialAnswers, paidPerUnit, receiptVsUsual } from "../lib/prices";
+import type {
+  Expense, Member, ParsedReceiptItem, PriceAnswer, Product, ReceiptScan, ShopMatch,
+} from "../lib/types";
 
 interface ItemDraft {
   key: string;
@@ -41,6 +53,13 @@ interface ItemDraft {
   weights?: Record<string, string>;
   quantity?: string;
   unitPrice?: number;
+  /* Price tracking; only sent along when the expense has a shop. */
+  productId?: string;
+  productName?: string;
+  productMatch?: "receipt" | "model" | "name" | null;
+  track?: boolean;
+  onSale?: boolean;
+  regularUnitPrice?: number;
 }
 
 let counter = 0;
@@ -108,6 +127,8 @@ export default function ExpenseForm() {
   const planned = usePlan(teamId, planId);
   const invalidate = useTeamInvalidation(teamId);
   const remove = useDeleteExpense(teamId);
+  const shops = useShops(teamId);
+  const reviewPrices = useReviewPrices(teamId);
 
   const editing = Boolean(expenseId);
   const members = team.data?.members ?? [];
@@ -115,31 +136,22 @@ export default function ExpenseForm() {
 
   const [loaded, setLoaded] = useState(false);
   const [planLoaded, setPlanLoaded] = useState(false);
-  const [scanning, setScanning] = useState(false);
+  const scan = useScanFlow();
 
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
   const [payerId, setPayerId] = useState("");
   const [spentAt, setSpentAt] = useState(todayLocal());
   const [categoryId, setCategoryId] = useState("");
+  const [shopId, setShopId] = useState("");
+  /** What the last scan said about the shop, until it is acknowledged. */
+  const [shopNotice, setShopNotice] = useState<{ match: ShopMatch; merchant: string | null } | null>(null);
+  /** After saving: prices that differ from the shop's saved ones, awaiting answers. */
+  const [review, setReview] = useState<PriceAnswer[] | null>(null);
   const [items, setItems] = useState<ItemDraft[]>([]);
   /** The line just added by hand, so its name field can take focus. */
   const [focusKey, setFocusKey] = useState<string | null>(null);
-  const [revealLines, setRevealLines] = useState(0);
-  const splitRef = useRef<HTMLDivElement>(null);
-  const scannerRef = useRef<HTMLDivElement>(null);
   const spentAtTouched = useRef(false);
-
-  useEffect(() => {
-    if (scanning) scannerRef.current?.scrollIntoView({ block: "start" });
-  }, [scanning]);
-
-  // After a scan the lines are the thing to check, so bring them into view.
-  useEffect(() => {
-    if (!revealLines) return;
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    splitRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
-  }, [revealLines]);
 
   /* Defaults for a new expense: me paying, everyone splitting. */
   if (!editing && !loaded && team.data && user) {
@@ -156,6 +168,7 @@ export default function ExpenseForm() {
     setPayerId(e.payer_id);
     setSpentAt(e.spent_at);
     setCategoryId(e.category_id ?? "");
+    setShopId(e.shop_id ?? "");
     setItems(e.split_mode === "total"
       ? [{
           key: nextKey(),
@@ -173,6 +186,11 @@ export default function ExpenseForm() {
           weights: Object.fromEntries(item.shares.map((share) => [share.user_id, share.weight ?? "1"])),
           quantity: item.quantity,
           unitPrice: item.unit_price,
+          productId: item.product_id ?? undefined,
+          // A line saved at a shop without a product was kept out on purpose.
+          track: item.product_id !== null || !e.shop_id,
+          onSale: item.on_sale,
+          regularUnitPrice: item.regular_unit_price ?? undefined,
         })));
   }
 
@@ -193,6 +211,28 @@ export default function ExpenseForm() {
     () => items.reduce((sum, item) => sum + (toMinor(item.amount, currency) ?? 0), 0),
     [items, currency],
   );
+
+  /* What the linked goods cost elsewhere, for the comparisons under each line. */
+  const productIds = useMemo(
+    () => [...new Set(items.flatMap((item) => (item.track !== false && item.productId ? [item.productId] : [])))].sort(),
+    [items],
+  );
+  const linked = useProducts(teamId, { ids: productIds, limit: 200 }, Boolean(shopId) && productIds.length > 0);
+  const productsById = useMemo(
+    () => new Map<string, Product>((linked.data?.items ?? []).map((product) => [product.id, product])),
+    [linked.data],
+  );
+  const basket = useMemo(() => {
+    const lines = items
+      .filter((item) => item.track !== false && item.productId)
+      .map((item) => ({ productId: item.productId!, quantity: item.quantity, total: toMinor(item.amount, currency) ?? 0 }));
+    return {
+      tracked: lines.length,
+      shops: shopId ? basketElsewhere(lines, productsById, shopId) : [],
+      vsUsual: shopId ? receiptVsUsual(lines, productsById) : { saved: 0, compared: 0 },
+    };
+  }, [items, productsById, shopId, currency]);
+  const shopName = shops.data?.find((shop) => shop.id === shopId)?.name ?? null;
 
   const itemPreview = useMemo(() => {
     const perUser = new Map<string, number>();
@@ -215,6 +255,7 @@ export default function ExpenseForm() {
         spent_at: spentAt,
         note,
         category_id: categoryId || null,
+        shop_id: shopId || null,
       };
       const body = {
         ...base,
@@ -225,6 +266,11 @@ export default function ExpenseForm() {
           quantity: item.quantity,
           unit_price: item.unitPrice,
           shares: item.userIds.map((id) => ({ user_id: id, weight: item.weights?.[id] ?? "1" })),
+          product_id: item.track === false ? null : item.productId ?? null,
+          product_name: item.productName || null,
+          track: item.track !== false,
+          on_sale: Boolean(item.onSale),
+          regular_unit_price: item.regularUnitPrice ?? null,
         })),
       };
       return expenseId
@@ -233,9 +279,14 @@ export default function ExpenseForm() {
         ? api<Expense>(`/teams/${teamId}/plans/${planId}/complete`, { body })
         : api<Expense>(`/teams/${teamId}/expenses`, { body });
     },
-    onSuccess: () => {
+    onSuccess: (expense) => {
       invalidate();
-      navigate(`/teams/${teamId}?tab=expenses`);
+      if (expense.price_changes.length > 0) {
+        setReview(initialAnswers(expense.price_changes));
+        window.scrollTo({ top: 0 });
+      } else {
+        navigate(`/teams/${teamId}?tab=expenses`);
+      }
     },
   });
 
@@ -280,8 +331,13 @@ export default function ExpenseForm() {
     setItems((list) => list.map((i) => (i.key === key ? { ...i, ...patch, ...(patch.userIds ? { weights: undefined } : {}) } : i)));
 
   function applyParsed(receipt: ReceiptScan, parsed: ParsedReceiptItem[]) {
-    setScanning(false);
-    if (receipt.merchant && !title) setTitle(receipt.merchant);
+    const shopTitle = receipt.shop.name || receipt.merchant;
+    if (shopTitle && !title) setTitle(shopTitle);
+    // A shop already chosen by hand stays; the notice says if the receipt disagrees.
+    if (receipt.shop.shop_id && !shopId) setShopId(receipt.shop.shop_id);
+    if (receipt.shop.shop_id || receipt.shop.name || receipt.merchant) {
+      setShopNotice({ match: receipt.shop, merchant: receipt.merchant });
+    }
     if (!editing && !spentAtTouched.current && receipt.purchased_at)
       setSpentAt(receipt.purchased_at);
     // Default: everyone is on every line. Deselecting is the quick edit.
@@ -293,8 +349,14 @@ export default function ExpenseForm() {
         userIds: everyone,
         quantity: item.quantity ?? undefined,
         unitPrice: item.unit_price ?? undefined,
+        productId: item.product_id ?? undefined,
+        productName: item.product_name ?? undefined,
+        productMatch: item.product_match,
+        track: true,
+        onSale: item.on_sale,
+        regularUnitPrice: item.regular_unit_price ?? undefined,
     }))]);
-    setRevealLines((n) => n + 1);
+    scan.finish();
   }
 
   function addLine() {
@@ -324,7 +386,7 @@ export default function ExpenseForm() {
             full
             className="sm:w-auto"
             loading={save.isPending}
-            disabled={!valid || scanning}
+            disabled={!valid || scan.scanning}
           >
             {t(editing ? "Save changes" : planId ? "Record purchase" : "Add expense")}
           </Button>
@@ -340,48 +402,96 @@ export default function ExpenseForm() {
     </div>
   );
 
+  /** Under a line: which product it is, whether it was on sale, and how its price compares. */
+  function linePrice(item: ItemDraft) {
+    const paid = toMinor(item.amount, currency);
+    const product = item.productId ? productsById.get(item.productId) : undefined;
+    return (
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-start justify-between gap-2">
+          <ProductLinker
+            teamId={teamId}
+            currency={currency}
+            lineName={item.name}
+            link={{ productId: item.productId, productName: item.productName, productMatch: item.productMatch, track: item.track !== false }}
+            product={product}
+            onChange={(link) => updateItem(item.key, link)}
+          />
+          {item.track !== false && (
+            <button
+              type="button"
+              aria-pressed={Boolean(item.onSale)}
+              onClick={() => updateItem(item.key, { onSale: !item.onSale })}
+              className={cx(
+                "shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors",
+                "active:scale-[0.95] active:duration-0 pointer-coarse:px-3 pointer-coarse:py-1.5",
+                item.onSale ? "border-transparent bg-price-low-soft text-price-low" : "border-line text-muted hover:text-body",
+              )}
+            >
+              {t("% On sale")}
+            </button>
+          )}
+        </div>
+        {item.track !== false && product && paid !== null && paid > 0 && (
+          <PriceVerdict paid={paidPerUnit(paid, item.quantity)} product={product} shopId={shopId} currency={currency} className="self-start" />
+        )}
+      </div>
+    );
+  }
+
+  if (review) {
+    const done = () => navigate(`/teams/${teamId}?tab=expenses`);
+    const reviewBar = (
+      <div className="flex flex-col gap-2">
+        <FormError message={reviewPrices.error instanceof ApiError ? reviewPrices.error.message : null} />
+        <div className="flex gap-2">
+          <Button type="button" full className="sm:w-auto" loading={reviewPrices.isPending}
+            onClick={() => reviewPrices.mutate(review, { onSuccess: done })}>
+            {t("Save prices")}
+          </Button>
+          <Button type="button" variant="ghost" disabled={reviewPrices.isPending} onClick={done}>
+            {t("Decide later")}
+          </Button>
+        </div>
+      </div>
+    );
+    return (
+      <AppShell back={{ to: `/teams/${teamId}?tab=expenses`, label: team.data?.name ?? t("Back") }} bar={reviewBar}>
+        <PageTitle
+          title={t(review.length === 1 ? "A price has changed" : "Some prices have changed")}
+          subtitle={t("The expense is saved. Should these become the shop's prices?")}
+        />
+        <Card className="p-4 sm:p-5">
+          <PriceReview answers={review} onChange={setReview} currency={currency} />
+        </Card>
+        <p className="mt-3 px-1 text-[12px] text-muted">
+          {t("Decide later, and they wait under Prices, marked “price changed”.")}
+        </p>
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell back={back} bar={bar}>
       <PageTitle title={t(editing ? "Edit expense" : planId ? "Complete purchase" : "Add an expense")}
         subtitle={planId ? t("Fill in the prices and choose who shares each item.") : undefined} />
 
-      {scanning ? (
-        <div ref={scannerRef} className="mb-4 scroll-mt-[calc(var(--header-h)+env(safe-area-inset-top)+1rem)]">
-          <ReceiptScanner
-            teamId={teamId}
-            appendToExisting={items.length > 0}
-            onParsed={applyParsed}
-            onCancel={() => setScanning(false)}
-          />
-        </div>
-      ) : (
-          /* Keep the photo action visible even after the user has typed lines. */
-          <button
-            type="button"
-            onClick={() => setScanning(true)}
-            className={cx(
-              "card mb-4 flex w-full items-center gap-3 p-4 text-left hover:border-line-strong",
-              "transition duration-150 ease-out active:scale-[0.98] active:duration-0",
-            )}
-          >
-            <span className="grid size-10 shrink-0 place-items-center rounded-button bg-ink text-ink-text">
-              <CameraIcon />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-medium text-body">
-                {t(editing || started ? "Add from receipt" : "Scan a receipt")}
-              </span>
-              <span className="block text-[13px] text-muted">
-                {t(scanUnavailable
-                  ? "Receipt scanning is not configured on this server."
-                  : "Upload, drop, or paste receipt photos. On a phone, you can also take a photo.")}
-              </span>
-            </span>
-            <svg viewBox="0 0 16 16" className="size-4 shrink-0 text-subtle" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="m6 3 5 5-5 5" />
-            </svg>
-          </button>
-      )}
+      {/* Keep the photo action visible even after the user has typed lines. */}
+      <ScanPanel
+        flow={scan}
+        className="mb-4"
+        title={t(editing || started ? "Add from receipt" : "Scan a receipt")}
+        hint={t(scanUnavailable
+          ? "Receipt scanning is not configured on this server."
+          : "Upload, drop, or paste receipt photos. On a phone, you can also take a photo.")}
+      >
+        <ReceiptScanner
+          teamId={teamId}
+          appendToExisting={items.length > 0}
+          onParsed={(receipt) => applyParsed(receipt, receipt.items)}
+          onCancel={scan.close}
+        />
+      </ScanPanel>
 
       <form id="expense-form" onSubmit={submit} className="flex flex-col gap-4">
         <Card className="flex flex-col gap-4 p-4 sm:p-5">
@@ -422,11 +532,27 @@ export default function ExpenseForm() {
               )}
             </Field>
           </div>
+          <ShopPicker
+            teamId={teamId}
+            value={shopId}
+            onChange={setShopId}
+            hint={t("Optional. Each line's price is remembered for this shop, so you can compare.")}
+          />
+          {shopNotice && (
+            <ShopMatchCard
+              teamId={teamId}
+              match={shopNotice.match}
+              merchant={shopNotice.merchant}
+              shopId={shopId}
+              onPick={setShopId}
+              onDismiss={() => setShopNotice(null)}
+            />
+          )}
         </Card>
 
         {/* ----------------------------------------------------- line items */}
         <div
-          ref={splitRef}
+          ref={scan.resultsRef}
           className="scroll-mt-[calc(var(--header-h)+env(safe-area-inset-top)+1rem)]"
         >
           <Card className="flex flex-col gap-4 p-4 sm:p-5">
@@ -437,6 +563,12 @@ export default function ExpenseForm() {
             {items.length === 0 && (
               <p className="hatch rounded-control bg-surface-2 px-3 py-6 text-center text-sm text-muted">
                 {t("No lines yet. Add one by hand, or scan a receipt.")}
+              </p>
+            )}
+            {items.length > 0 && !shopId && (
+              <p className="-mt-1 flex items-center gap-1.5 text-[12px] text-muted">
+                <TagIcon />
+                {t("Choose where you bought it to remember these prices and compare shops.")}
               </p>
             )}
 
@@ -499,6 +631,7 @@ export default function ExpenseForm() {
                       </svg>
                     </button>
                   </div>
+                  {shopId && linePrice(item)}
                 </li>
               ))}
             </ul>
@@ -511,8 +644,8 @@ export default function ExpenseForm() {
                   </svg>
                   {t("Add a line")}
                 </Button>
-                {!scanning && (editing || started) && (
-                  <Button type="button" variant="secondary" size="sm" onClick={() => setScanning(true)}>
+                {!scan.scanning && (editing || started) && (
+                  <Button type="button" variant="secondary" size="sm" onClick={scan.open}>
                     <CameraIcon />
                     {t("Add from receipt")}
                   </Button>
@@ -541,6 +674,14 @@ export default function ExpenseForm() {
             )}
           </Card>
         </div>
+
+        {shopId && (basket.shops.length > 0 || basket.vsUsual.saved !== 0) && (
+          <Card className="p-4 sm:p-5">
+            <h2 className="mb-2 text-sm font-semibold text-body">{t("How this receipt did")}</h2>
+            <BasketComparison shops={basket.shops} tracked={basket.tracked} currency={currency}
+              shopName={shopName} vsUsual={basket.vsUsual} />
+          </Card>
+        )}
 
         <Card className="flex flex-col gap-4 p-4 sm:p-5">
           <CategoryPicker
@@ -574,14 +715,5 @@ export default function ExpenseForm() {
         )}
       </form>
     </AppShell>
-  );
-}
-
-function CameraIcon() {
-  return (
-    <svg viewBox="0 0 20 20" className="size-4.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" aria-hidden="true">
-      <path d="M2.5 7.5A1.5 1.5 0 0 1 4 6h1.8l1.2-2h6l1.2 2H16a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 16 16H4a1.5 1.5 0 0 1-1.5-1.5v-7Z" />
-      <circle cx="10" cy="10.75" r="2.75" />
-    </svg>
   );
 }

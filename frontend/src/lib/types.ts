@@ -66,6 +66,9 @@ export interface ExpenseItem {
   total: number;
   category_id: string | null;
   shares: Share[];
+  product_id: string | null;
+  on_sale: boolean;
+  regular_unit_price: number | null;
 }
 
 export interface Expense {
@@ -78,12 +81,15 @@ export interface Expense {
   spent_at: string;
   payer_id: string;
   category_id: string | null;
+  shop_id: string | null;
   split_mode: SplitMode;
   source: ExpenseSource;
   receipt_id: string | null;
   created_at: string;
   shares: Share[];
   items: ExpenseItem[];
+  /** Only on a save: receipt prices that differ from a shop's saved price. */
+  price_changes: PriceChange[];
 }
 
 export interface ExpenseList {
@@ -175,10 +181,26 @@ export interface ParsedReceiptItem {
   quantity: string | null;
   unit_price: number | null;
   total: number;
+  /** A readable name for a new product, written by the model. */
+  product_name: string | null;
+  product_id: string | null;
+  /** receipt: this shop printed the line so before; model: recognised; name: same name. */
+  product_match: "receipt" | "model" | "name" | null;
+  on_sale: boolean;
+  regular_unit_price: number | null;
+}
+
+export interface ShopMatch {
+  shop_id: string | null;
+  matched_by: "receipt" | "model" | null;
+  /** What to call it, when it is a new shop. */
+  name: string | null;
+  address: string | null;
 }
 
 export interface ReceiptScan {
   merchant: string | null;
+  shop: ShopMatch;
   purchased_at: string | null;
   currency: string | null;
   items: ParsedReceiptItem[];
@@ -219,4 +241,136 @@ export interface AppNotification {
 export interface NotificationList {
   items: AppNotification[];
   unread_count: number;
+}
+
+/* ------------------------------------------------------- shops and goods */
+
+export interface Shop {
+  id: string;
+  name: string;
+  address: string;
+  /** Other names receipts print for it. */
+  aliases: string[];
+  product_count: number;
+  last_visit: string | null;
+}
+
+/** One product at one shop. Prices are per unit (a piece, or a kilogram). */
+export interface ShopPrice {
+  shop_id: string;
+  shop_name: string;
+  /** Today's price there: a running sale, else the regular price. */
+  price: number | null;
+  regular_price: number | null;
+  regular_on: string | null;
+  sale_price: number | null;
+  sale_on: string | null;
+  sale_until: string | null;
+  /** A sale is running today. */
+  on_sale: boolean;
+  last_paid: number | null;
+  last_paid_on: string | null;
+  last_paid_on_sale: boolean;
+}
+
+/** A receipt price that differs from the one saved for that shop. */
+export interface PriceChange {
+  product_id: string;
+  product_name: string;
+  shop_id: string;
+  shop_name: string;
+  observed_on: string;
+  price: number;
+  on_sale: boolean;
+  regular_price: number | null;
+  saved_price: number | null;
+  saved_on_sale: boolean;
+}
+
+export interface PricePoint {
+  expense_id: string;
+  shop_id: string | null;
+  shop_name: string | null;
+  spent_at: string;
+  price: number;
+  quantity: string;
+  on_sale: boolean;
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  /** Cheapest first; shops without a current price last. */
+  prices: ShopPrice[];
+  best_price: number | null;
+  best_shop_id: string | null;
+  last_bought_on: string | null;
+  purchase_count: number;
+  pending: PriceChange[];
+}
+
+export interface ProductDetail extends Product {
+  history: PricePoint[];
+  aliases: { shop_id: string; shop_name: string; name: string }[];
+}
+
+export interface ProductList {
+  items: Product[];
+  total_count: number;
+}
+
+export type PriceDecision = "regular" | "sale" | "keep";
+export type ProductFilter = "all" | "compared" | "sale" | "changed";
+export type ProductSort = "recent" | "name" | "spread";
+
+/** Someone's answer to "this receipt has a new price -- update it?". */
+export interface PriceAnswer {
+  change: PriceChange;
+  decision: PriceDecision;
+  saleUntil?: string | null;
+}
+
+/** Tracked purchases against each good's usual price at the time. */
+export interface Savings {
+  currency: string;
+  /** Sum of purchases that came in under the usual price. */
+  saved: number;
+  /** Sum of purchases that came in over it, as a positive amount. */
+  extra: number;
+  /** The part of `saved` from discounted lines. */
+  on_sale: number;
+  compared: number;
+  purchases: number;
+  /** Net saved per purchase date, shaped like spending so the same charts draw it. */
+  days: DailySpending[];
+  best: { product_id: string; name: string; saved: number }[];
+}
+
+/** One good read off a price screenshot; nothing is saved until imported. */
+export interface ScannedPrice {
+  name: string;
+  product_name: string | null;
+  product_id: string | null;
+  product_match: "receipt" | "model" | "name" | null;
+  /** Per piece or per kilogram; null when the model could not read it. */
+  price: number | null;
+  /** A crossed-out or old price shown beside it. */
+  regular_price: number | null;
+  sale_until: string | null;
+}
+
+export interface PriceScan {
+  shop: ShopMatch;
+  currency: string;
+  items: ScannedPrice[];
+  notes: string | null;
+}
+
+export interface ListedPrice {
+  name: string;
+  product_id: string | null;
+  product_name: string | null;
+  price: number;
+  regular_price: number | null;
+  sale_until: string | null;
 }

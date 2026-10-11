@@ -49,9 +49,11 @@ class FakeParser:
         self.receipt = receipt
         self.error = error
         self.images: list[bytes] = []
+        self.hints = None
 
-    async def parse(self, images: list[bytes]):
+    async def parse(self, images: list[bytes], hints=None):
         self.images = images
+        self.hints = hints
         if self.error is not None:
             raise self.error
         return ParseResult(receipt=self.receipt, cost_usd=None, model="fake")
@@ -266,3 +268,124 @@ def test_scanned_lines_append_to_existing_manual_expense(
     assert body["total"] == 75_00 + 433_32
     assert session.scalar(select(func.count()).select_from(Receipt)) == 0
     assert session.scalar(select(func.count()).select_from(ReceiptImage)) == 0
+
+
+def _shop(client, team, actor, name, alias=None):
+    response = client.post(
+        f"/api/teams/{team}/shops", json={"name": name, "alias": alias}, headers=actor.headers
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def test_known_shops_and_goods_are_offered_to_the_model(
+    client, team, alice, monkeypatch, scanning_enabled
+) -> None:
+    lenta = _shop(client, team, alice, "Lenta", alias="ООО Лента")
+    _shop(client, team, alice, "Pyaterochka")
+    client.post(
+        f"/api/teams/{team}/expenses",
+        json={
+            "title": "Lenta",
+            "payer_id": alice.id,
+            "spent_at": "2026-09-01",
+            "split_mode": "items",
+            "shop_id": lenta["id"],
+            "items": [{"name": "Milk", "total": 89_90, "shares": [{"user_id": alice.id}]}],
+        },
+        headers=alice.headers,
+    ).raise_for_status()
+
+    parser = _install(monkeypatch, FakeParser(receipt=SAMPLE))
+    assert _scan(client, team, alice, _jpeg()).status_code == 200
+    shops = {(shop.name, tuple(shop.aliases)) for shop in parser.hints.shops}
+    assert shops == {("Lenta", ("ООО Лента",)), ("Pyaterochka", ())}
+    assert [product.name for product in parser.hints.products] == ["Milk"]
+    refs = [shop.ref for shop in parser.hints.shops] + [p.ref for p in parser.hints.products]
+    assert all(len(ref) <= 4 for ref in refs)  # short refs, never database ids
+
+
+def test_a_shop_known_by_its_printed_name_is_matched_without_the_model(
+    client, team, alice, monkeypatch, scanning_enabled
+) -> None:
+    shop = _shop(client, team, alice, "Pyaterochka", alias='ООО "Агроторг"')
+    receipt = SAMPLE.model_copy(update={"merchant": "ООО АГРОТОРГ", "shop_id": None})
+    _install(monkeypatch, FakeParser(receipt=receipt))
+    body = _scan(client, team, alice, _jpeg()).json()
+    assert body["shop"]["shop_id"] == shop["id"]
+    assert body["shop"]["matched_by"] == "receipt"
+
+
+def test_the_models_shop_pick_is_mapped_back_and_an_invented_one_ignored(
+    client, team, alice, monkeypatch, scanning_enabled
+) -> None:
+    _shop(client, team, alice, "Lenta")
+    parser = _install(monkeypatch, FakeParser(receipt=SAMPLE))
+    _scan(client, team, alice, _jpeg())
+    ref = parser.hints.shops[0].ref
+
+    picked = SAMPLE.model_copy(update={"merchant": "ООО Неизвестно", "shop_id": ref.upper()})
+    _install(monkeypatch, FakeParser(receipt=picked))
+    body = _scan(client, team, alice, _jpeg()).json()
+    assert body["shop"]["matched_by"] == "model"
+    assert body["shop"]["shop_id"] is not None
+
+    invented = picked.model_copy(update={"shop_id": "s99", "shop_name": "Новый магазин"})
+    _install(monkeypatch, FakeParser(receipt=invented))
+    body = _scan(client, team, alice, _jpeg()).json()
+    assert body["shop"] == {
+        "shop_id": None,
+        "matched_by": None,
+        "name": "Новый магазин",
+        "address": None,
+    }
+
+
+def test_scanned_lines_link_to_goods_this_shop_printed_before(
+    client, team, alice, monkeypatch, scanning_enabled
+) -> None:
+    shop = _shop(client, team, alice, "Pyaterochka")
+    saved = client.post(
+        f"/api/teams/{team}/expenses",
+        json={
+            "title": "Pyaterochka",
+            "payer_id": alice.id,
+            "spent_at": "2026-09-01",
+            "split_mode": "items",
+            "shop_id": shop["id"],
+            "items": [
+                {
+                    "name": "Chicken breast",
+                    "total": 433_32,
+                    "quantity": "0.482",
+                    "product_name": "Куриное филе",
+                    "shares": [{"user_id": alice.id}],
+                }
+            ],
+        },
+        headers=alice.headers,
+    ).json()
+    chicken = saved["items"][0]["product_id"]
+
+    receipt = SAMPLE.model_copy(
+        update={
+            "merchant": "Pyaterochka",
+            "items": [
+                ParsedItem(name="CHICKEN  BREAST", total=Decimal("450.00")),
+                ParsedItem(
+                    name="Napkins",
+                    total=Decimal("59.90"),
+                    product_name="Салфетки бумажные",
+                    discounted=True,
+                    regular_price=Decimal("89.90"),
+                ),
+            ],
+        }
+    )
+    _install(monkeypatch, FakeParser(receipt=receipt))
+    body = _scan(client, team, alice, _jpeg()).json()
+    first, second = body["items"]
+    assert (first["product_id"], first["product_match"]) == (chicken, "receipt")
+    assert (second["product_id"], second["product_match"]) == (None, None)
+    assert second["product_name"] == "Салфетки бумажные"
+    assert (second["on_sale"], second["regular_unit_price"]) == (True, 89_90)

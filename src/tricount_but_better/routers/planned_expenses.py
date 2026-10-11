@@ -11,7 +11,7 @@ from ..deps import CurrentUser, DbSession, Membership, TeamDep
 from ..models import Category, Expense, ExpenseSource, PlannedExpense, Receipt
 from ..notifications import deliver_push, notify_expense_created
 from ..schemas import ExpenseCreate, ExpenseOut, PlannedExpenseIn, PlannedExpenseOut
-from .expenses import _apply, _member_ids, _serialise
+from .expenses import _apply, _member_ids, _serialise, track_prices
 
 router = APIRouter(prefix="/teams/{team_id}/plans", tags=["planned expenses"])
 
@@ -121,8 +121,10 @@ def complete_plan(
     )
     _apply(session, expense, payload, _member_ids(session, team.id), team.id)
     session.add(expense)
+    session.flush()
+    changes = track_prices(session, expense, payload)
     session.delete(plan)
     notifications = notify_expense_created(session, expense, user)
     session.commit()
     background.add_task(deliver_push, [n.id for n in notifications])
-    return _serialise(expense)
+    return _serialise(expense, changes)
