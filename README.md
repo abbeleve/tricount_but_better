@@ -91,7 +91,7 @@ Photograph the receipt, and a vision model reads it into editable line items.
 | Backend | FastAPI, SQLAlchemy 2, Alembic, SQLite |
 | Frontend | React 19, Vite, TypeScript, Tailwind v4 |
 | Auth | JWT access/refresh, Argon2 password hashing |
-| Receipt parsing | Polza OpenAI-compatible vision API (`qwen/qwen3.5-9b` by default) |
+| Receipt parsing | Polza OpenAI-compatible vision API (`openai/gpt-6-luna-pro` by default) |
 | Deploy | systemd + nginx, GitHub Actions |
 
 ### Money is never a float
@@ -139,7 +139,7 @@ ignored `.env` file:
 
 ```bash
 # .env
-VLM_MODEL=qwen/qwen3.5-9b
+VLM_MODEL=openai/gpt-6-luna-pro
 POLZA_API_KEY=pza_...
 ```
 
