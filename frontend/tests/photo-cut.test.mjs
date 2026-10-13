@@ -40,13 +40,13 @@ test("no cut is added once the last part is too short to halve", () => {
   assert.equal(addCut(plan), plan);
 });
 
-test("parts share edges, never overlap, and keep only the trimmed width", () => {
-  const plan = { left: 0.1, right: 0.9, cuts: [0.25, 0.5] };
+test("parts share edges, never overlap, and keep only the box", () => {
+  const plan = { left: 0.1, right: 0.9, top: 0.05, bottom: 0.95, cuts: [0.25, 0.5] };
   const parts = pieces(plan, 1000, 4000);
   assert.deepEqual(parts, [
-    { x: 100, y: 0, width: 800, height: 1000 },
+    { x: 100, y: 200, width: 800, height: 800 },
     { x: 100, y: 1000, width: 800, height: 1000 },
-    { x: 100, y: 2000, width: 800, height: 2000 },
+    { x: 100, y: 2000, width: 800, height: 1800 },
   ]);
   for (let i = 1; i < parts.length; i++) assert.equal(parts[i].y, parts[i - 1].y + parts[i - 1].height);
 });
@@ -93,4 +93,21 @@ test("zoom stays between fitting and the largest", () => {
   assert.equal(clampZoom(100), MAX_ZOOM);
   assert.equal(clampZoom(Number.NaN), 1);
   assert.equal(clampZoom(2.5), 2.5);
+});
+
+test("the top and bottom cannot cross each other or a cut, and cuts stay inside them", () => {
+  const plan = { ...WHOLE, top: 0.1, bottom: 0.9, cuts: [0.4, 0.6] };
+  assert.equal(moveEdge(plan, "top", 0.5).top, 0.4 - MIN_PART);
+  assert.equal(moveEdge(plan, "bottom", 0.5).bottom, 0.6 + MIN_PART);
+  assert.equal(moveCut(plan, 0, 0).cuts[0], 0.1 + MIN_PART);
+  assert.equal(moveCut(plan, 1, 1).cuts[1], 0.9 - MIN_PART);
+  const box = { ...WHOLE, top: 0.3, bottom: 0.7 };
+  assert.equal(moveEdge(box, "top", 0.9).top, 0.7 - MIN_PART);
+  assert.equal(moveEdge(box, "bottom", 0).bottom, 0.3 + MIN_PART);
+});
+
+test("a new cut halves the last part of the box, not of the photo", () => {
+  const box = { ...WHOLE, top: 0.2, bottom: 0.6 };
+  assert.deepEqual(addCut(box).cuts, [0.4]);
+  assert.equal(isWhole(box), false);
 });
