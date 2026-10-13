@@ -115,6 +115,10 @@ export async function cutPhoto(image: HTMLImageElement, plan: CutPlan, name: str
     if (!context) throw new Error("Could not cut this photo.");
     context.drawImage(image, part.x, part.y, part.width, part.height, 0, 0, canvas.width, canvas.height);
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+    // Safari on a phone frees a canvas's memory only when told, and refuses
+    // new canvases past a total; a photo cut in several parts can reach it.
+    canvas.width = 0;
+    canvas.height = 0;
     if (!blob) throw new Error("Could not cut this photo.");
     const suffix = parts.length > 1 ? `-${i + 1}` : "";
     files.push(new File([blob], `${base}${suffix}.jpg`, { type: "image/jpeg" }));

@@ -37,6 +37,8 @@ function upright(handle: Handle): boolean {
 const STEP = 0.01;
 /** One press of a zoom button or key. */
 const ZOOM_STEP = 1.5;
+/** Where a double tap zooms to from the whole photo. */
+const TAP_ZOOM = 2.5;
 
 // Lines and knobs sit on any photo, so they are white with a dark edge rather
 // than theme colours.
@@ -69,7 +71,7 @@ export function PhotoCutter({ file, url, maxParts, maxPhotos, onDone, onCancel }
   const scrollRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
-  const grab = useRef<{ handle: Handle; offset: number } | null>(null);
+  const grab = useRef<{ handle: Handle; offset: number; pointer: number } | null>(null);
   const [plan, setPlan] = useState<CutPlan>(WHOLE);
   const [natural, setNatural] = useState<Size | null>(null);
   const [stage, setStage] = useState<Size | null>(null);
@@ -83,14 +85,27 @@ export function PhotoCutter({ file, url, maxParts, maxPhotos, onDone, onCancel }
   const wantedZoom = useRef(1);
   const fingers = useRef(new Map<number, Point>());
   const pinch = useRef<{ distance: number; zoom: number; at: Point } | null>(null);
+  // A press that may turn out to be a tap, and the last tap, for a double tap.
+  const press = useRef<{ pointer: number; at: Point; time: number } | null>(null);
+  const lastTap = useRef<{ at: Point; time: number } | null>(null);
   const [broken, setBroken] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Unmounting removes the dialog from the page, which ends the modal too.
+  // The page behind is held still: on a phone it would scroll under a finger.
   useEffect(() => {
     const dialog = dialogRef.current;
-    if (dialog && !dialog.open) dialog.showModal();
+    if (dialog && !dialog.open) {
+      if (typeof dialog.showModal === "function") dialog.showModal();
+      else dialog.setAttribute("open", "");
+    }
+    const root = document.documentElement;
+    const overflow = root.style.overflow;
+    root.style.overflow = "hidden";
+    return () => {
+      root.style.overflow = overflow;
+    };
   }, []);
 
   // The photo is drawn as large as the stage allows, and the lines are laid
@@ -149,8 +164,19 @@ export function PhotoCutter({ file, url, maxParts, maxPhotos, onDone, onCancel }
       const delta = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? event.deltaY * 16 : event.deltaY;
       zoomBy(Math.exp(-delta / 250), { x: event.clientX - box.left, y: event.clientY - box.top });
     };
+    // Safari's own pinch and page scroll, which touch-action alone does not
+    // always stop on an iPhone; the gestures here are the editor's.
+    const hold = (event: Event) => event.preventDefault();
     area.addEventListener("wheel", onWheel, { passive: false });
-    return () => area.removeEventListener("wheel", onWheel);
+    area.addEventListener("touchmove", hold, { passive: false });
+    area.addEventListener("gesturestart", hold);
+    area.addEventListener("gesturechange", hold);
+    return () => {
+      area.removeEventListener("wheel", onWheel);
+      area.removeEventListener("touchmove", hold);
+      area.removeEventListener("gesturestart", hold);
+      area.removeEventListener("gesturechange", hold);
+    };
   }, [zoomBy, broken]);
 
   function stagePoint(event: PointerEvent): Point {
@@ -170,15 +196,32 @@ export function PhotoCutter({ file, url, maxParts, maxPhotos, onDone, onCancel }
     };
   }
 
-  // One finger or the mouse pans the photo; two fingers pinch to zoom. The
-  // lines and buttons on it keep their own pointers.
-  function startPan(event: PointerEvent<HTMLDivElement>) {
-    if ((event.target as Element).closest("[data-handle], button")) return;
+  // Every finger on the stage is followed, on a line or not, so two fingers
+  // pinch wherever they land: on a narrow receipt the lines cover much of the
+  // photo. One finger moves the line it is on, or else pans.
+  function fingerDown(event: PointerEvent<HTMLDivElement>) {
     if (event.pointerType === "mouse" && event.button !== 0) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    fingers.current.set(event.pointerId, stagePoint(event));
+    if ((event.target as Element).closest("button")) return;
+    // The first finger of a gesture starts afresh, so one whose lift went
+    // unseen cannot leave every later touch read as a pinch.
+    if (event.isPrimary) fingers.current.clear();
+    const at = stagePoint(event);
+    fingers.current.set(event.pointerId, at);
     const [a, b] = [...fingers.current.values()];
-    pinch.current = b ? pinchFrom(a, b) : null;
+    if (b) {
+      grab.current = null;
+      press.current = null;
+      pinch.current = pinchFrom(a, b);
+    } else {
+      press.current = { pointer: event.pointerId, at, time: event.timeStamp };
+    }
+  }
+
+  function startPan(event: PointerEvent<HTMLDivElement>) {
+    // A line keeps the finger it caught; the stage keeps every other one, so
+    // a pan or pinch goes on when a finger slides off the photo.
+    if (!fingers.current.has(event.pointerId) || grab.current?.pointer === event.pointerId) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
   }
 
   function pan(event: PointerEvent<HTMLDivElement>) {
@@ -187,12 +230,16 @@ export function PhotoCutter({ file, url, maxParts, maxPhotos, onDone, onCancel }
     if (!last || !element) return;
     const now = stagePoint(event);
     fingers.current.set(event.pointerId, now);
+    const started = press.current;
+    if (started?.pointer === event.pointerId && Math.hypot(now.x - started.at.x, now.y - started.at.y) > 10) {
+      press.current = null;
+    }
     const [a, b] = [...fingers.current.values()];
     if (b && pinch.current) {
       const distance = Math.hypot(a.x - b.x, a.y - b.y);
       const middle = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
       showZoom(pinch.current.zoom * (distance / pinch.current.distance), pinch.current.at, middle);
-    } else if (!b) {
+    } else if (!b && !grab.current) {
       element.scrollLeft -= now.x - last.x;
       element.scrollTop -= now.y - last.y;
     }
@@ -201,6 +248,18 @@ export function PhotoCutter({ file, url, maxParts, maxPhotos, onDone, onCancel }
   function endPan(event: PointerEvent<HTMLDivElement>) {
     fingers.current.delete(event.pointerId);
     pinch.current = null;
+    const started = press.current;
+    press.current = null;
+    if (event.type !== "pointerup" || started?.pointer !== event.pointerId) return;
+    if (event.timeStamp - started.time > 300) return;
+    // A double tap zooms in on that spot, or back out to the whole photo.
+    const before = lastTap.current;
+    if (before && event.timeStamp - before.time < 350 && Math.hypot(started.at.x - before.at.x, started.at.y - before.at.y) < 30) {
+      lastTap.current = null;
+      zoomBy((wantedZoom.current > 1.01 ? 1 : TAP_ZOOM) / wantedZoom.current, started.at);
+    } else {
+      lastTap.current = { at: started.at, time: event.timeStamp };
+    }
   }
 
   function onKeys(event: KeyboardEvent<HTMLDialogElement>) {
@@ -235,18 +294,21 @@ export function PhotoCutter({ file, url, maxParts, maxPhotos, onDone, onCancel }
 
   function startDrag(event: PointerEvent<HTMLDivElement>, handle: Handle) {
     const pointer = pointerAt(event, handle);
-    if (busy || event.button !== 0 || pointer === null) return;
+    // A second finger makes a pinch, not a second drag.
+    if (busy || event.button !== 0 || pointer === null || fingers.current.size > 1) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    event.currentTarget.focus();
+    // Without preventScroll a zoomed photo would jump to show the whole line.
+    event.currentTarget.focus({ preventScroll: true });
     // Held where it was grabbed, so the line does not jump to the finger.
-    grab.current = { handle, offset: pointer - at(handle, plan) };
+    grab.current = { handle, offset: pointer - at(handle, plan), pointer: event.pointerId };
   }
 
   function drag(event: PointerEvent<HTMLDivElement>) {
     const held = grab.current;
-    const pointer = held && pointerAt(event, held.handle);
-    if (!held || pointer === null) return;
+    if (held?.pointer !== event.pointerId) return;
+    const pointer = pointerAt(event, held.handle);
+    if (pointer === null) return;
     setPlan((current) => moved(held.handle, current, pointer - held.offset));
   }
 
@@ -286,6 +348,13 @@ export function PhotoCutter({ file, url, maxParts, maxPhotos, onDone, onCancel }
 
   const percent = (value: number) => `${(value * 100).toFixed(3)}%`;
   const bounds = [plan.top, ...plan.cuts];
+  // A cut's remove button sits beside the box where there is room, so on a
+  // narrow receipt it never lands on the line's knob.
+  const roomRight = view ? view.areaWidth - view.left - view.width * plan.right : 0;
+  const roomLeft = view ? view.left + view.width * plan.left : 0;
+  const removeAt = roomRight >= 52
+    ? { left: "calc(100% + 10px)" }
+    : roomLeft >= 52 ? { right: "calc(100% + 10px)" } : { right: "3rem" };
   const across = { left: percent(plan.left), width: percent(plan.right - plan.left) };
   const down = { top: percent(plan.top), height: percent(plan.bottom - plan.top) };
 
@@ -297,7 +366,7 @@ export function PhotoCutter({ file, url, maxParts, maxPhotos, onDone, onCancel }
       onClose={onCancel}
       onKeyDown={onKeys}
       className={cx(
-        "fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none overflow-hidden bg-overlay p-0 text-body",
+        "fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none touch-manipulation overflow-hidden overscroll-none bg-overlay p-0 text-body",
         "sm:m-auto sm:h-[min(92dvh,60rem)] sm:w-[min(92vw,44rem)] sm:rounded-card sm:border sm:border-line",
         "backdrop:bg-black/60",
       )}
@@ -306,7 +375,7 @@ export function PhotoCutter({ file, url, maxParts, maxPhotos, onDone, onCancel }
         <header className="flex items-start justify-between gap-3 border-b border-line px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
           <div>
             <h2 id="photo-cutter-title" className="text-sm font-semibold">{t("Trim and cut the photo")}</h2>
-            <p className="mt-0.5 text-[13px] text-muted">
+            <p className="mt-0.5 text-[12px] leading-snug text-muted sm:text-[13px]">
               {t("Move the edges in to leave out the background. Add cuts to split a long photo into parts; each part is read as its own photo, so small print stays legible.")}
             </p>
           </div>
@@ -317,7 +386,7 @@ export function PhotoCutter({ file, url, maxParts, maxPhotos, onDone, onCancel }
           )}
         </header>
 
-        <div ref={stageRef} className="relative min-h-0 flex-1 overflow-hidden bg-surface-2">
+        <div ref={stageRef} className="relative min-h-0 flex-1 select-none overflow-hidden bg-surface-2 [-webkit-touch-callout:none]">
           {broken ? (
             <p role="alert" className="absolute inset-0 m-auto h-fit max-w-xs px-4 text-center text-sm text-muted">
               {t("This photo cannot be opened for editing in this browser.")}
@@ -326,6 +395,7 @@ export function PhotoCutter({ file, url, maxParts, maxPhotos, onDone, onCancel }
             <>
             <div
               ref={scrollRef}
+              onPointerDownCapture={fingerDown}
               onPointerDown={startPan}
               onPointerMove={pan}
               onPointerUp={endPan}
@@ -401,9 +471,10 @@ export function PhotoCutter({ file, url, maxParts, maxPhotos, onDone, onCancel }
                       onPointerDown={(e) => e.stopPropagation()}
                       onClick={() => setPlan((current) => removeCut(current, index))}
                       className={cx(
-                        "absolute right-10 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-full",
-                        "bg-black/65 text-white transition active:scale-90 active:duration-0",
+                        "absolute top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-full pointer-coarse:size-10",
+                        "bg-black/65 text-white shadow-[0_0_0_1px_rgb(255_255_255/0.5)] transition active:scale-90 active:duration-0",
                       )}
+                      style={removeAt}
                     >
                       <svg viewBox="0 0 16 16" className="size-3" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
                         <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
@@ -539,11 +610,12 @@ export function PhotoCutter({ file, url, maxParts, maxPhotos, onDone, onCancel }
               {t("A scan takes up to {count} photos, so this one cannot be cut. Remove another photo first.", { count: maxPhotos })}
             </p>
           )}
+          {/* Cancel takes only its own width: "Разрезать на 3 фото" needs the rest on a phone. */}
           <div className="flex gap-2">
-            <Button type="button" variant="ghost" className="flex-1" disabled={busy} onClick={onCancel}>
+            <Button type="button" variant="ghost" className="shrink-0" disabled={busy} onClick={onCancel}>
               {t("Cancel")}
             </Button>
-            <Button type="button" className="flex-1" loading={busy} disabled={broken} onClick={finish}>
+            <Button type="button" className="min-w-0 flex-1" loading={busy} disabled={broken} onClick={finish}>
               {parts > 1
                 ? t("Cut into {count} photos", { count: parts })
                 : isWhole(plan) ? t("Done") : t("Trim photo")}
