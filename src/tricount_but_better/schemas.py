@@ -658,6 +658,25 @@ class SpendingOut(BaseModel):
     days: list[DailySpendingOut]
 
 
+class PersonSpendingOut(BaseModel):
+    """One person's spending by purchase date, in both senses.
+
+    ``paid`` is what they paid at the till; ``share`` is what their part of
+    each expense came to. Across all people each sums to the team's spending.
+    """
+
+    user_id: uuid.UUID
+    display_name: str
+    is_member: bool
+    paid: list[DailySpendingOut]
+    share: list[DailySpendingOut]
+
+
+class PeopleSpendingOut(BaseModel):
+    currency: str
+    people: list[PersonSpendingOut]
+
+
 class CategoryTotalOut(BaseModel):
     category_id: uuid.UUID | None
     name: str

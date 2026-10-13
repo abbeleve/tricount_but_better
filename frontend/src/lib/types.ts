@@ -108,6 +108,21 @@ export interface Spending {
   days: DailySpending[];
 }
 
+/** One person's daily spending: what they paid, and what their shares came to. */
+export interface PersonSpending {
+  user_id: string;
+  display_name: string;
+  /** False for someone who left the team with expenses still on the books. */
+  is_member: boolean;
+  paid: DailySpending[];
+  share: DailySpending[];
+}
+
+export interface PeopleSpending {
+  currency: string;
+  people: PersonSpending[];
+}
+
 export interface PlannedItem {
   name: string;
   total: number | null;

@@ -24,7 +24,7 @@ Photograph the receipt, and a vision model reads it into editable line items.
   split a long one into parts that never overlap. Each part is read as its own page, at full
   size, so small print stays legible. Zoom in to place the lines (buttons,
   pinch or double tap on a phone, Ctrl/⌘ + scroll on a computer).
-- **Spending analytics** — the Spending section in each team shows this week/month/year against the full previous period, a comparison chart, and history grouped by week, month, or year. Weeks start on Monday; totals use purchase dates and include refunds, excluding plans and paybacks.
+- **Spending analytics** — the Spending section in each team shows this week/month/year against the full previous period, a comparison chart, and history grouped by week, month, or year. **By person** draws a line for each member over the last weeks, months or years — either what was spent on them, whoever paid (**Who it was for**, the default), or what they paid themselves (**Who paid**) — and tapping a period lists everyone's amount and part of the team total. Weeks start on Monday; totals use purchase dates and include refunds, excluding plans and paybacks.
 - **Planned purchases** — keep a shopping list with optional prices. Finish the
   purchase through the expense form; plans do not affect balances.
 - **Shops and prices** — say where an expense was bought, and every line's

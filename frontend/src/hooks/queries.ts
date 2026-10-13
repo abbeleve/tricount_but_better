@@ -21,6 +21,7 @@ import type {
   ServerConfig,
   Settlement,
   Shop,
+  PeopleSpending,
   Spending,
   TeamDetail,
   TeamSummary,
@@ -35,6 +36,7 @@ export const keys = {
   categories: (id: string) => ["team", id, "categories"] as const,
   categoryTotals: (id: string) => ["team", id, "category-totals"] as const,
   spending: (id: string) => ["team", id, "spending"] as const,
+  peopleSpending: (id: string) => ["team", id, "spending", "people"] as const,
   expenses: (id: string) => ["team", id, "expenses"] as const,
   expense: (id: string, eid: string) => ["team", id, "expense", eid] as const,
   plans: (id: string) => ["team", id, "plans"] as const,
@@ -106,6 +108,12 @@ export const useSpending = (teamId: string) =>
   useQuery({
     queryKey: keys.spending(teamId),
     queryFn: ({ signal }) => api<Spending>(`/teams/${teamId}/spending`, { signal }),
+  });
+
+export const usePeopleSpending = (teamId: string) =>
+  useQuery({
+    queryKey: keys.peopleSpending(teamId),
+    queryFn: ({ signal }) => api<PeopleSpending>(`/teams/${teamId}/spending/people`, { signal }),
   });
 
 export const useExpense = (teamId: string, expenseId: string | undefined) =>

@@ -8,27 +8,16 @@ import {
   SPENDING_PERIODS, historyBuckets, periodBuckets, periodStart,
   shiftPeriod, spendingChange, sumSpending, type SpendingPeriod,
 } from "../lib/spending";
+import { PeopleSpending } from "./PeopleSpending";
+import { PeriodPicker } from "./Segmented";
 import type { TeamDetail } from "../lib/types";
 import { SpendingComparisonChart, SpendingHistoryChart } from "./SpendingCharts";
 import { periodLabel, spendingDate } from "../lib/spending-format";
 import { Button, Card, EmptyState, ErrorState, Money, Skeleton, cx } from "./ui";
 
-const LABELS = { week: "Week", month: "Month", year: "Year" };
 const CURRENT = { week: "This week", month: "This month", year: "This year" };
 const PREVIOUS = { week: "Last week", month: "Last month", year: "Last year" };
 
-export function PeriodPicker({ value, onChange, label }: {
-  value: SpendingPeriod; onChange: (value: SpendingPeriod) => void; label: string;
-}) {
-  const { t } = useI18n();
-  return <div role="group" aria-label={label} className="inline-flex rounded-segment bg-surface-2 p-1">
-    {SPENDING_PERIODS.map((period) => <button key={period} type="button" aria-pressed={value === period}
-      onClick={() => onChange(period)} className={cx("rounded-segment-option px-3 py-2 text-[13px] transition-colors",
-        value === period ? "bg-raised font-medium text-body shadow-raised" : "text-muted hover:text-body")}>
-      {t(LABELS[period])}
-    </button>)}
-  </div>;
-}
 function Change({ current, previous }: { current: number; previous: number }) {
   const { t, language } = useI18n();
   const change = spendingChange(current, previous);
@@ -151,6 +140,8 @@ export function SpendingTab({ team }: { team: TeamDetail }) {
         </details>
       </Card>
     </div>
+
+    <PeopleSpending team={team} />
 
     <Card className="p-4 sm:p-5">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">

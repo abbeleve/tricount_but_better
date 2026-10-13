@@ -624,6 +624,20 @@ const russian: Record<string, string> = {
   "every item needs a name": "У каждой позиции должно быть название",
   "Add from screenshot": "Добавить со скриншота",
   "A shop's app or website, a leaflet, or price tags. Upload, drop or paste; on a phone, take a photo.": "Приложение или сайт магазина, буклет или ценники. Загрузите, перетащите или вставьте; на телефоне можно сфотографировать.",
+  "By person": "По участникам",
+  "Who paid": "Кто платил",
+  "Who it was for": "На кого потрачено",
+  "What to count": "Что считать",
+  "How much each person paid themselves, whoever it was for.": "Сколько каждый заплатил сам — неважно, на кого.",
+  "How much was spent on each person, whoever paid.": "Сколько потрачено на каждого — неважно, кто платил.",
+  "For example, someone buys {total} of groceries for three: under “Who it was for” each of the three has {part}, under “Who paid” the buyer has all {total}.": "Например, кто-то купил продуктов на {total} на троих: в «На кого потрачено» — по {part} у каждого из троих, а в «Кто платил» — все {total} у покупателя.",
+  "Spending by person": "Расходы по участникам",
+  "Team total": "Всего по группе",
+  "Period": "Период",
+  "Everyone else": "Остальные",
+  "left the team": "больше не в группе",
+  "Legend": "Легенда",
+  "Either way, everyone's amounts add up to the team's spending. Refunds are deducted.": "В обоих случаях суммы участников складываются в расходы группы. Возвраты вычтены.",
 };
 
 function interpolate(text: string, values?: Record<string, string | number>): string {
