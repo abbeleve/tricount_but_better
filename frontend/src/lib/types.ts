@@ -292,6 +292,13 @@ export interface Shop {
 }
 
 /** One product at one shop. Prices are per unit (a piece, or a kilogram). */
+/** The expense whose receipt brought a saved price in. */
+export interface PriceSource {
+  expense_id: string;
+  title: string;
+  spent_at: string;
+}
+
 export interface ShopPrice {
   shop_id: string;
   shop_name: string;
@@ -299,9 +306,12 @@ export interface ShopPrice {
   price: number | null;
   regular_price: number | null;
   regular_on: string | null;
+  /** Null when typed in, read off a screenshot, or its expense was deleted. */
+  regular_from: PriceSource | null;
   sale_price: number | null;
   sale_on: string | null;
   sale_until: string | null;
+  sale_from: PriceSource | null;
   /** A sale is running today. */
   on_sale: boolean;
   last_paid: number | null;
@@ -321,6 +331,8 @@ export interface PriceChange {
   regular_price: number | null;
   saved_price: number | null;
   saved_on_sale: boolean;
+  /** The expense it was seen on. */
+  expense_id: string | null;
 }
 
 export interface PricePoint {

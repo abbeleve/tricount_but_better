@@ -400,6 +400,14 @@ class ProductMerge(BaseModel):
     into_id: uuid.UUID
 
 
+class PriceSourceOut(BaseModel):
+    """The expense whose receipt brought a saved price in."""
+
+    expense_id: uuid.UUID
+    title: str
+    spent_at: date
+
+
 class ShopPriceOut(BaseModel):
     """One product at one shop. Prices are per unit, in minor units."""
 
@@ -408,9 +416,13 @@ class ShopPriceOut(BaseModel):
     price: int | None = Field(description="Today's price there: a running sale, else regular.")
     regular_price: int | None
     regular_on: date | None
+    regular_from: PriceSourceOut | None = Field(
+        default=None, description="None when typed in, read off a screenshot, or deleted."
+    )
     sale_price: int | None
     sale_on: date | None
     sale_until: date | None
+    sale_from: PriceSourceOut | None = None
     on_sale: bool = Field(description="A sale is running today.")
     last_paid: int | None = None
     last_paid_on: date | None = None
@@ -430,6 +442,7 @@ class PriceChangeOut(BaseModel):
     regular_price: int | None = Field(description="Undiscounted price printed on the receipt.")
     saved_price: int | None = Field(description="The shop's price for that day before this.")
     saved_on_sale: bool
+    expense_id: uuid.UUID | None = Field(default=None, description="The expense it was seen on.")
 
 
 class PricePointOut(BaseModel):
@@ -503,6 +516,8 @@ class PriceDecisionIn(BaseModel):
     regular_price: int | None = Field(default=None, gt=0)
     decision: PriceDecision
     sale_until: date | None = None
+    # The expense the price was seen on, from the question; the price links to it.
+    expense_id: uuid.UUID | None = None
 
     @model_validator(mode="after")
     def _check(self) -> Self:

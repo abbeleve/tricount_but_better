@@ -14,6 +14,11 @@ Two kinds of price live here, and keeping them apart is the whole design:
 A sale is temporary by nature, so it never overwrites the regular price: it sits
 beside it with an end date, counts as the shop's price while it runs, and the
 regular price is back by itself once it ends.
+
+Each saved price remembers the expense whose receipt brought it in, so a price
+can always be traced back to the purchase it came from. Seeing the same price
+again does not move that link; a price typed in or read off a screenshot has
+none.
 """
 
 from __future__ import annotations
@@ -408,6 +413,7 @@ class Observation:
     price: int
     on_sale: bool
     regular_price: int | None = None
+    expense_id: uuid.UUID | None = None  # the expense the receipt was saved as
 
 
 def needs_review(current: ShopPrice, seen: Observation) -> bool:
@@ -437,10 +443,24 @@ def _mark_reviewed(current: ShopPrice, on: date, price: int) -> None:
         current.reviewed_price = price
 
 
-def set_regular(current: ShopPrice, price: int, on: date) -> None:
-    if current.regular_on is None or on >= current.regular_on:
-        current.regular_price = price
-        current.regular_on = on
+def _put_regular(current: ShopPrice, price: int, on: date, expense_id: uuid.UUID | None) -> None:
+    """Make ``price`` the regular price as of ``on``, unless a newer one is saved.
+
+    The link to where the price came from only moves when the price does: the
+    same price seen again is still the one an earlier receipt brought in.
+    """
+    if current.regular_on is not None and on < current.regular_on:
+        return
+    if price != current.regular_price:
+        current.regular_expense_id = expense_id
+    current.regular_price = price
+    current.regular_on = on
+
+
+def set_regular(
+    current: ShopPrice, price: int, on: date, expense_id: uuid.UUID | None = None
+) -> None:
+    _put_regular(current, price, on, expense_id)
     # Paying the regular price after a sale began means the sale is over.
     if current.sale_on is not None and current.sale_on <= on:
         clear_sale(current)
@@ -452,21 +472,24 @@ def set_sale(
     on: date,
     until: date | None = None,
     regular_price: int | None = None,
+    expense_id: uuid.UUID | None = None,
 ) -> None:
+    # Changing only when a running sale ends keeps where it came from.
+    if price != current.sale_price or not sale_running(current, on):
+        current.sale_expense_id = expense_id
     current.sale_price = price
     current.sale_on = on
     current.sale_until = until if until is not None else on + timedelta(days=SALE_DAYS)
     # A receipt that prints the undiscounted price is the best evidence of it.
     if regular_price is not None and regular_price > price:
-        if current.regular_on is None or on >= current.regular_on:
-            current.regular_price = regular_price
-            current.regular_on = on
+        _put_regular(current, regular_price, on, expense_id)
 
 
 def clear_sale(current: ShopPrice) -> None:
     current.sale_price = None
     current.sale_on = None
     current.sale_until = None
+    current.sale_expense_id = None
 
 
 Decision = Literal["regular", "sale", "keep"]
@@ -480,9 +503,11 @@ def decide(
 ) -> None:
     """Apply someone's answer to "this receipt has a new price -- update it?"."""
     if decision == "regular":
-        set_regular(current, seen.price, seen.observed_on)
+        set_regular(current, seen.price, seen.observed_on, seen.expense_id)
     elif decision == "sale":
-        set_sale(current, seen.price, seen.observed_on, sale_until, seen.regular_price)
+        set_sale(
+            current, seen.price, seen.observed_on, sale_until, seen.regular_price, seen.expense_id
+        )
     _mark_reviewed(current, seen.observed_on, seen.price)
 
 
@@ -498,6 +523,7 @@ def set_listed(
     A higher old price beside it makes it a sale; without one it is the
     regular price, which also ends a sale that began before it. Confirmed by
     hand, so it counts as answered and no receipt from that day asks again.
+    No purchase brought it in, so a price it changes links to no expense.
     """
     if regular_price is not None and regular_price > price:
         set_sale(current, price, on, sale_until, regular_price)
@@ -510,9 +536,15 @@ def first_sighting(product_id: uuid.UUID, seen: Observation) -> ShopPrice:
     """The first price seen at a shop is accepted as is; there is nothing to ask."""
     current = ShopPrice(product_id=product_id, shop_id=seen.shop_id)
     if seen.on_sale:
-        set_sale(current, seen.price, seen.observed_on, regular_price=seen.regular_price)
+        set_sale(
+            current,
+            seen.price,
+            seen.observed_on,
+            regular_price=seen.regular_price,
+            expense_id=seen.expense_id,
+        )
     else:
-        set_regular(current, seen.price, seen.observed_on)
+        set_regular(current, seen.price, seen.observed_on, seen.expense_id)
     _mark_reviewed(current, seen.observed_on, seen.price)
     return current
 
@@ -566,6 +598,7 @@ def observation_for(item: ExpenseItem, shop_id: uuid.UUID, on: date) -> Observat
         price=paid_per_unit(item.total, item.quantity),
         on_sale=item.on_sale,
         regular_price=item.regular_unit_price,
+        expense_id=item.expense_id,
     )
 
 

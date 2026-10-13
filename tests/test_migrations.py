@@ -118,3 +118,69 @@ def test_packs_split_by_their_marking_codes_become_one_good(tmp_path) -> None:
         assert sorted(
             db.execute("SELECT shop_id, product_id, regular_price FROM shop_prices").fetchall()
         ) == sorted([(lenta, packs["2196"], 199_99), (other_shop, packs["2196"], 210_00)])
+
+
+def test_saved_prices_link_to_the_receipt_that_brought_them_in(tmp_path) -> None:
+    database = tmp_path / "app.db"
+    _alembic(database, "upgrade", "7f3a5c1e9b20")
+    team, lenta, metro = _id(), _id(), _id()
+    milk, coffee, rice = _id(), _id(), _id()
+    first, again, rise, back = _id(), _id(), _id(), _id()  # milk: 89.90, 89.90, 99.90, 89.90
+    full, sale = _id(), _id()  # coffee: 499.00, then 349.00 on sale printing 499.00
+    expenses = [  # (id, shop, spent on)
+        (first, lenta, "2026-09-01"),
+        (again, lenta, "2026-09-08"),
+        (rise, lenta, "2026-09-15"),
+        (back, lenta, "2026-09-22"),
+        (full, metro, "2026-10-01"),
+        (sale, metro, "2026-10-05"),
+    ]
+    lines = [  # (expense, product, total, quantity, on sale, printed regular)
+        (first, milk, 89_90, 1, 0, None),
+        (again, milk, 179_80, 2, 0, None),
+        (rise, milk, 99_90, 1, 0, None),
+        (back, milk, 89_90, 1, 0, None),
+        (full, coffee, 499_00, 1, 0, None),
+        (sale, coffee, 349_00, 1, 1, 499_00),
+    ]
+    prices = [  # (product, shop, regular, regular on, sale, sale on)
+        # Back at 89.90 after a rise: the receipt that brought it back.
+        (milk, lenta, 89_90, "2026-09-22", None, None),
+        (coffee, metro, 499_00, "2026-10-05", 349_00, "2026-10-05"),
+        (rice, lenta, 120_00, "2026-10-01", None, None),  # typed in: no receipt shows it
+    ]
+
+    with sqlite3.connect(database) as db:
+        db.executemany(
+            "INSERT INTO expenses (id, team_id, payer_id, created_by_id, shop_id, title, note,"
+            " currency, total, spent_at, split_mode, source, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, 'Shop', '', 'RUB', 0, ?, 'items', 'manual', ?, ?)",
+            [(eid, team, _id(), _id(), shop, on, on, on) for eid, shop, on in expenses],
+        )
+        db.executemany(
+            "INSERT INTO expense_items (id, expense_id, position, name, quantity, unit_price,"
+            " total, product_id, on_sale, regular_unit_price)"
+            " VALUES (?, ?, 0, 'line', ?, 0, ?, ?, ?, ?)",
+            [(_id(), e, q, total, p, s, r) for e, p, total, q, s, r in lines],
+        )
+        db.executemany(
+            "INSERT INTO shop_prices (id, product_id, shop_id, regular_price, regular_on,"
+            " sale_price, sale_on, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, '2026-10-10')",
+            [(_id(), *price) for price in prices],
+        )
+
+    _alembic(database, "upgrade", "head")
+
+    with sqlite3.connect(database) as db:
+        links = {
+            product: (regular, sale)
+            for product, regular, sale in db.execute(
+                "SELECT product_id, regular_expense_id, sale_expense_id FROM shop_prices"
+            )
+        }
+    assert links == {milk: (back, None), coffee: (full, sale), rice: (None, None)}
+
+    _alembic(database, "downgrade", "7f3a5c1e9b20")
+    with sqlite3.connect(database) as db:
+        columns = {row[1] for row in db.execute("PRAGMA table_info(shop_prices)")}
+    assert "regular_expense_id" not in columns

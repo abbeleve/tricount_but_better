@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useI18n } from "../lib/i18n";
 import { formatMoney } from "../lib/money";
 import { formatPercent, shortDate } from "../lib/price-format";
@@ -15,16 +16,19 @@ const DECISIONS: { id: PriceDecision; label: string; hint: string }[] = [
  * One question per good whose receipt price differs from the shop's saved one.
  * A sale is the reason this is a question at all: it is a real price, but a
  * temporary one, so it is kept beside the regular price with an end date
- * instead of replacing it.
+ * instead of replacing it. Given a team, each receipt's date opens its expense.
  */
 export function PriceReview({
   answers,
   onChange,
   currency,
+  teamId,
 }: {
   answers: PriceAnswer[];
   onChange: (answers: PriceAnswer[]) => void;
   currency: string;
+  /** Links each receipt to its expense; left out where that expense is the page. */
+  teamId?: string;
 }) {
   const { t, language } = useI18n();
   const update = (index: number, patch: Partial<PriceAnswer>) =>
@@ -41,7 +45,13 @@ export function PriceReview({
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-body">{change.product_name}</p>
                 <p className="text-[12px] text-muted">
-                  {change.shop_name} · {shortDate(change.observed_on, language, true)}
+                  {change.shop_name} ·{" "}
+                  {teamId && change.expense_id ? (
+                    <Link to={`/teams/${teamId}/expenses/${change.expense_id}`}
+                      className="underline decoration-line-strong underline-offset-2 transition-colors hover:text-body hover:decoration-current">
+                      {shortDate(change.observed_on, language, true)}
+                    </Link>
+                  ) : shortDate(change.observed_on, language, true)}
                   {change.on_sale && <span className="ml-1.5 text-price-low">{t("marked as discounted")}</span>}
                 </p>
               </div>

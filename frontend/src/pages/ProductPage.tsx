@@ -90,6 +90,7 @@ export default function ProductPage() {
             product={data}
             currency={currency}
             today={today}
+            teamId={teamId}
             onEdit={(shopId) => setEditing(shopId)}
             editing={editing && editing !== "new" ? {
               shopId: editing,
@@ -195,7 +196,7 @@ function PendingCard({ teamId, product, currency }: { teamId: string; product: P
     <Card className="border-line-strong p-4 sm:p-5">
       <h2 className="text-sm font-semibold text-body">{t("Price changed")}</h2>
       <p className="mb-2 text-[13px] text-muted">{t("A receipt shows a different price from the saved one. Which is it?")}</p>
-      <PriceReview answers={answers} onChange={setAnswers} currency={currency} />
+      <PriceReview answers={answers} onChange={setAnswers} currency={currency} teamId={teamId} />
       <FormError message={review.error?.message ?? null} />
       <Button className="mt-3" loading={review.isPending} onClick={() => review.mutate(answers)}>{t("Save prices")}</Button>
     </Card>

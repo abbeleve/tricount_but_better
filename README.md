@@ -43,6 +43,11 @@ Photograph the receipt, and a vision model reads it into editable line items.
   you say — and the regular price returns by itself when it ends), or a one-off
   to **keep** the old price for. An old receipt entered late never rolls a
   price back. Unanswered questions wait on the Prices tab as "price changed".
+  Every saved price remembers the expense whose receipt brought it in: under
+  each shop's price the product page says "from the receipt of 12 Oct", and
+  tapping it opens that expense (a waiting question links its receipt the same
+  way). Seeing the same price again keeps the link to the receipt that first
+  showed it; a price typed in or read off a screenshot links to none.
   *How goods are recognised:* the model describes every line in levels, from
   general to specific — what it is, which one, whose and how big ("хлеб ·
   белый нарезной · 350 г") — and a line is suggested for the good described

@@ -261,7 +261,10 @@ class ShopPrice(Base):
     when someone says so, and a sale price sits next to the regular price with
     an end date instead of overwriting it. ``reviewed_*`` is the newest receipt
     price someone has already answered for, so the same receipt never asks twice.
-    Prices are per unit (a piece, or a kilogram for weighed goods), in minor units.
+    ``*_expense_id`` is the expense whose receipt brought each price in; it is
+    empty for a price typed in or read off a screenshot, and once the expense is
+    deleted. Prices are per unit (a piece, or a kilogram for weighed goods), in
+    minor units.
     """
 
     __tablename__ = "shop_prices"
@@ -276,9 +279,15 @@ class ShopPrice(Base):
     )
     regular_price: Mapped[int | None] = mapped_column(BigInteger)
     regular_on: Mapped[date | None] = mapped_column(Date)
+    regular_expense_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("expenses.id", ondelete="SET NULL")
+    )
     sale_price: Mapped[int | None] = mapped_column(BigInteger)
     sale_on: Mapped[date | None] = mapped_column(Date)
     sale_until: Mapped[date | None] = mapped_column(Date)
+    sale_expense_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("expenses.id", ondelete="SET NULL")
+    )
     reviewed_on: Mapped[date | None] = mapped_column(Date)
     reviewed_price: Mapped[int | None] = mapped_column(BigInteger)
     updated_at: Mapped[datetime] = mapped_column(

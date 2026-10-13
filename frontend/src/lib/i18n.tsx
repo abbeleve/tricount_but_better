@@ -407,6 +407,8 @@ const russian: Record<string, string> = {
   "cheapest": "дешевле всего",
   "{price} on sale, usually {regular}": "{price} по скидке, обычно {regular}",
   "usually {price}": "обычно {price}",
+  "from the receipt of {date}": "из чека от {date}",
+  "sale from the receipt of {date}": "скидка из чека от {date}",
   "No current price at {shops}.": "Нет текущей цены: {shops}.",
   "sale": "скидка",
   "sale · last day": "скидка · последний день",

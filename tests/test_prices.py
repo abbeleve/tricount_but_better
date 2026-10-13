@@ -81,6 +81,7 @@ def _review(client, team, actor, change, decision, **extra):
                     "price": change["price"],
                     "regular_price": change["regular_price"],
                     "decision": decision,
+                    "expense_id": change["expense_id"],
                     **extra,
                 }
             ]
@@ -624,6 +625,153 @@ def test_a_first_sighting_on_sale_keeps_the_printed_regular_price(client, team, 
     row = _at(_products(client, team, alice)["items"][0], lenta)
     assert (row["price"], row["sale_price"], row["regular_price"]) == (150_00, 150_00, 200_00)
     assert row["sale_until"] == str(TODAY + timedelta(days=7))
+
+
+# ------------------------------------------------------- price sources
+
+
+def _source(expense):
+    return {"expense_id": expense["id"], "title": expense["title"], "spent_at": expense["spent_at"]}
+
+
+def test_a_saved_price_links_back_to_the_receipt_that_brought_it_in(client, team, alice):
+    lenta = _shop(client, team, alice, "Lenta")
+    first = _buy(client, team, alice, lenta["id"], [("Milk", 89_90)], spent_at=TODAY - timedelta(7))
+    product = first["items"][0]["product_id"]
+    assert _at(_product(client, team, alice, product), lenta)["regular_from"] == _source(first)
+
+    # The same price again is still the one the first receipt brought in.
+    again = _buy(client, team, alice, lenta["id"], [("Milk", 89_90)], spent_at=TODAY - timedelta(1))
+    row = _at(_product(client, team, alice, product), lenta)
+    assert row["regular_on"] == again["spent_at"]
+    assert row["regular_from"] == _source(first)
+
+    # A new price says which expense showed it, and taking it on moves the link.
+    dearer = _buy(client, team, alice, lenta["id"], [("Milk", 99_90)])
+    [change] = dearer["price_changes"]
+    assert change["expense_id"] == dearer["id"]
+    assert _products(client, team, alice)["items"][0]["pending"][0]["expense_id"] == dearer["id"]
+    _review(client, team, alice, change, "regular")
+    assert _at(_product(client, team, alice, product), lenta)["regular_from"] == _source(dearer)
+
+
+def test_keeping_the_old_price_keeps_its_link(client, team, alice):
+    lenta = _shop(client, team, alice, "Lenta")
+    first = _buy(client, team, alice, lenta["id"], [("Milk", 89_90)], spent_at=TODAY - timedelta(7))
+    [change] = _buy(client, team, alice, lenta["id"], [("Milk", 129_90)])["price_changes"]
+    _review(client, team, alice, change, "keep")
+    row = _at(_product(client, team, alice, change["product_id"]), lenta)
+    assert row["regular_from"] == _source(first)
+
+
+def test_a_sale_links_to_its_own_receipt_beside_the_regular_price(client, team, alice):
+    lenta = _shop(client, team, alice, "Lenta")
+    full = _buy(
+        client, team, alice, lenta["id"], [("Coffee", 499_00)], spent_at=TODAY - timedelta(2)
+    )
+    sale = _buy(
+        client,
+        team,
+        alice,
+        lenta["id"],
+        [{"name": "Coffee", "total": 349_00, "on_sale": True, "regular_unit_price": 499_00}],
+    )
+    [change] = sale["price_changes"]
+    _review(client, team, alice, change, "sale")
+    row = _at(_product(client, team, alice, change["product_id"]), lenta)
+    assert row["on_sale"] is True
+    assert row["sale_from"] == _source(sale)
+    assert row["regular_from"] == _source(full)  # the printed regular price is the same one
+
+
+def test_a_first_sighting_on_sale_links_both_prices_to_its_receipt(client, team, alice):
+    lenta = _shop(client, team, alice, "Lenta")
+    bought = _buy(
+        client,
+        team,
+        alice,
+        lenta["id"],
+        [{"name": "Tea", "total": 150_00, "on_sale": True, "regular_unit_price": 200_00}],
+    )
+    row = _at(_products(client, team, alice)["items"][0], lenta)
+    assert row["sale_from"] == row["regular_from"] == _source(bought)
+
+
+def test_a_price_typed_in_or_read_off_a_screenshot_links_to_no_expense(client, team, alice):
+    lenta = _shop(client, team, alice, "Lenta")
+    _buy(client, team, alice, lenta["id"], [("Coffee", 499_00)], spent_at=TODAY - timedelta(2))
+    sale = _buy(
+        client, team, alice, lenta["id"], [{"name": "Coffee", "total": 349_00, "on_sale": True}]
+    )
+    [change] = sale["price_changes"]
+    _review(client, team, alice, change, "sale", sale_until=str(TODAY + timedelta(days=5)))
+    product = change["product_id"]
+    url = f"/api/teams/{team}/products/{product}/prices/{lenta['id']}"
+
+    # Changing only the regular price leaves the sale where it came from.
+    edited = client.put(
+        url,
+        json={
+            "regular_price": 520_00,
+            "sale_price": 349_00,
+            "sale_until": str(TODAY + timedelta(days=5)),
+            "observed_on": str(TODAY),
+        },
+        headers=alice.headers,
+    ).json()
+    assert _at(edited, lenta)["regular_from"] is None
+    assert _at(edited, lenta)["sale_from"] == _source(sale)
+    ended = client.put(
+        url, json={"regular_price": 520_00, "observed_on": str(TODAY)}, headers=alice.headers
+    ).json()
+    assert _at(ended, lenta)["sale_from"] is None
+
+    # A receipt brings a price in again; a screenshot with another one replaces it.
+    [back] = _buy(client, team, alice, lenta["id"], [("Coffee", 549_00)])["price_changes"]
+    _review(client, team, alice, back, "regular")
+    assert _at(_product(client, team, alice, product), lenta)["regular_from"] is not None
+    imported = client.post(
+        f"/api/teams/{team}/prices/import",
+        json={
+            "shop_id": lenta["id"],
+            "observed_on": str(TODAY),
+            "items": [{"name": "Coffee", "product_id": product, "price": 559_00}],
+        },
+        headers=alice.headers,
+    )
+    assert imported.status_code == 200, imported.text
+    row = _at(_product(client, team, alice, product), lenta)
+    assert (row["regular_price"], row["regular_from"]) == (559_00, None)
+
+
+def test_deleting_the_expense_leaves_the_price_without_a_link(client, team, alice):
+    lenta = _shop(client, team, alice, "Lenta")
+    bought = _buy(client, team, alice, lenta["id"], [("Milk", 89_90)])
+    product = bought["items"][0]["product_id"]
+    deleted = client.delete(f"/api/teams/{team}/expenses/{bought['id']}", headers=alice.headers)
+    assert deleted.status_code == 204
+    row = _at(_product(client, team, alice, product), lenta)
+    assert (row["regular_price"], row["regular_from"]) == (89_90, None)
+
+
+def test_a_price_answer_links_only_to_an_expense_at_that_shop(client, team, alice):
+    lenta = _shop(client, team, alice, "Lenta")
+    metro = _shop(client, team, alice, "Metro")
+    _buy(client, team, alice, lenta["id"], [("Milk", 89_90)], spent_at=TODAY - timedelta(7))
+    elsewhere = _buy(client, team, alice, metro["id"], [("Milk", 95_00)])
+    [change] = _buy(client, team, alice, lenta["id"], [("Milk", 99_90)])["price_changes"]
+    for wrong in (elsewhere["id"], str(uuid.uuid4())):
+        response = client.post(
+            f"/api/teams/{team}/prices/review",
+            json={
+                "decisions": [
+                    {**change, "decision": "regular", "expense_id": wrong},
+                ]
+            },
+            headers=alice.headers,
+        )
+        assert response.status_code == 404, response.text
+    assert _at(_product(client, team, alice, change["product_id"]), lenta)["price"] == 89_90
 
 
 # ---------------------------------------------------------- comparison

@@ -419,6 +419,7 @@ export function useReviewPrices(teamId: string) {
             regular_price: change.regular_price,
             decision,
             sale_until: decision === "sale" ? saleUntil || null : null,
+            expense_id: change.expense_id,
           })),
         },
       }),

@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from ..catalog import (
     Observation,
     Purchase,
+    clear_sale,
     decide,
     describe,
     first_sighting,
@@ -37,6 +38,7 @@ from ..schemas import (
     PriceChangeOut,
     PricePointOut,
     PriceReviewIn,
+    PriceSourceOut,
     ProductAliasOut,
     ProductCreate,
     ProductDetailOut,
@@ -116,7 +118,31 @@ def _change(
         regular_price=seen.regular_price,
         saved_price=None if current is None else price_now(current, seen.observed_on),
         saved_on_sale=running,
+        expense_id=seen.expense_id,
     )
+
+
+def _sources(
+    session: Session, team_id: uuid.UUID, prices: Iterable[ShopPrice]
+) -> dict[uuid.UUID, PriceSourceOut]:
+    """The expenses saved prices came from, by id. A deleted one is left out."""
+    ids = {
+        expense_id
+        for price in prices
+        for expense_id in (price.regular_expense_id, price.sale_expense_id)
+        if expense_id is not None
+    }
+    if not ids:
+        return {}
+    rows = session.execute(
+        select(Expense.id, Expense.title, Expense.spent_at).where(
+            Expense.team_id == team_id, Expense.id.in_(ids)
+        )
+    ).all()
+    return {
+        expense_id: PriceSourceOut(expense_id=expense_id, title=title, spent_at=spent_at)
+        for expense_id, title, spent_at in rows
+    }
 
 
 def build_products(
@@ -130,8 +156,10 @@ def build_products(
     ids = [product.id for product in products]
     shops = {shop.id: shop for shop in session.scalars(select(Shop).where(Shop.team_id == team_id))}
     saved: dict[uuid.UUID, dict[uuid.UUID, ShopPrice]] = defaultdict(dict)
-    for price in session.scalars(select(ShopPrice).where(ShopPrice.product_id.in_(ids))):
+    prices = session.scalars(select(ShopPrice).where(ShopPrice.product_id.in_(ids))).all()
+    for price in prices:
         saved[price.product_id][price.shop_id] = price
+    sources = _sources(session, team_id, prices)
     lines: dict[uuid.UUID, list[_Line]] = defaultdict(list)
     for line in _lines(session, team_id, ids):
         lines[line.product_id].append(line)
@@ -159,6 +187,7 @@ def build_products(
                     price=last.price,
                     on_sale=last.on_sale,
                     regular_price=last.regular_price,
+                    expense_id=last.expense_id,
                 )
                 if needs_review(current, seen):
                     pending.append(_change(product, shop, current, seen))
@@ -169,9 +198,15 @@ def build_products(
                     price=None if current is None else price_now(current, today),
                     regular_price=None if current is None else current.regular_price,
                     regular_on=None if current is None else current.regular_on,
+                    regular_from=None
+                    if current is None or current.regular_expense_id is None
+                    else sources.get(current.regular_expense_id),
                     sale_price=None if current is None else current.sale_price,
                     sale_on=None if current is None else current.sale_on,
                     sale_until=None if current is None else current.sale_until,
+                    sale_from=None
+                    if current is None or current.sale_expense_id is None
+                    else sources.get(current.sale_expense_id),
                     on_sale=current is not None and sale_running(current, today),
                     last_paid=None if last is None else last.price,
                     last_paid_on=None if last is None else last.spent_at,
@@ -445,8 +480,9 @@ def set_price(
     if payload.regular_price != current.regular_price:
         current.regular_price = payload.regular_price
         current.regular_on = payload.observed_on if payload.regular_price is not None else None
+        current.regular_expense_id = None  # typed in, not from a receipt
     if payload.sale_price is None:
-        current.sale_price = current.sale_on = current.sale_until = None
+        clear_sale(current)
     elif (payload.sale_price, payload.sale_until) != (current.sale_price, current.sale_until):
         set_sale(current, payload.sale_price, payload.observed_on, payload.sale_until)
     current.reviewed_on = payload.observed_on
@@ -475,12 +511,17 @@ def review_prices(payload: PriceReviewIn, membership: Membership, session: DbSes
 
     ``regular`` makes it the shop's price; ``sale`` keeps the regular price and
     records a temporary one until ``sale_until`` (a week if left out); ``keep``
-    changes nothing and stops asking about that receipt.
+    changes nothing and stops asking about that receipt. A price taken on links
+    to ``expense_id``, the expense whose receipt showed it.
     """
     team_id = membership.team_id
     for answer in payload.decisions:
         product = _get(session, team_id, answer.product_id)
         shop = _shop(session, team_id, answer.shop_id)
+        if answer.expense_id is not None:
+            expense = session.get(Expense, answer.expense_id)
+            if expense is None or expense.team_id != team_id or expense.shop_id != shop.id:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "no such expense at that shop")
         seen = Observation(
             product_id=product.id,
             shop_id=shop.id,
@@ -488,6 +529,7 @@ def review_prices(payload: PriceReviewIn, membership: Membership, session: DbSes
             price=answer.price,
             on_sale=answer.decision == "sale",
             regular_price=answer.regular_price,
+            expense_id=answer.expense_id,
         )
         current = session.scalar(
             select(ShopPrice).where(

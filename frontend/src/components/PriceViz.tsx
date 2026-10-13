@@ -8,6 +8,7 @@
  */
 
 import { useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { useI18n } from "../lib/i18n";
 import { smoothChartPath } from "../lib/chart-path";
 import { exponentFor, formatMoney } from "../lib/money";
@@ -17,7 +18,7 @@ import {
   compareWithOtherShops, daysUntil, pricedRows, worthATrip,
   TRIP_MIN_ITEMS, TRIP_MIN_PERCENT, type BasketShop, type LineVerdict,
 } from "../lib/prices";
-import type { PricePoint, Product, ShopPrice } from "../lib/types";
+import type { PricePoint, PriceSource, Product, ShopPrice } from "../lib/types";
 import { Money, cx } from "./ui";
 
 /* ------------------------------------------------------------ line verdict */
@@ -83,12 +84,14 @@ export function PriceVerdict({
  * Emphasis: the cheapest shop in green, the rest neutral. Bars start at zero,
  * so a 10% difference looks like 10%; the signed gap beside each bar is what
  * makes small differences readable. A running sale draws its regular price as
- * a faint extension, so "how much cheaper than usual" is visible too.
+ * a faint extension, so "how much cheaper than usual" is visible too. Given
+ * a team, each price links back to the expense whose receipt brought it in.
  */
 export function ShopPriceBars({
   product,
   currency,
   today,
+  teamId,
   highlightShopId,
   onEdit,
   editing,
@@ -96,6 +99,8 @@ export function ShopPriceBars({
   product: Pick<Product, "prices">;
   currency: string;
   today: string;
+  /** Links each price to the expense it came from. */
+  teamId?: string;
   /** The shop a purchase was made in, marked "here". */
   highlightShopId?: string | null;
   /** Shows an Edit button per shop. */
@@ -118,6 +123,7 @@ export function ShopPriceBars({
           const cheapest = index === 0 || price === best;
           const gap = price - best;
           const regular = row.on_sale && row.regular_price && row.regular_price > price ? row.regular_price : null;
+          const source = teamId ? (row.on_sale ? row.sale_from : row.regular_from) : null;
           return (
             <li key={row.shop_id}>
               <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
@@ -156,9 +162,11 @@ export function ShopPriceBars({
                   style={{ width: `${Math.max((price / scale) * 100, 1.5)}%` }}
                 />
               </div>
-              {regular && (
-                <p className="mt-1 text-[12px] text-muted">
-                  {t("usually {price}", { price: formatMoney(regular, currency) })}
+              {(regular || source) && (
+                <p className="mt-1 flex flex-wrap items-baseline gap-x-1.5 text-[12px] text-muted">
+                  {regular && <span>{t("usually {price}", { price: formatMoney(regular, currency) })}</span>}
+                  {regular && source && <span aria-hidden="true">·</span>}
+                  {source && teamId && <SourceLink teamId={teamId} source={source} sale={row.on_sale} today={today} />}
                 </p>
               )}
               {editing?.shopId === row.shop_id && <div className="mt-3">{editing.node}</div>}
@@ -189,6 +197,21 @@ export function ShopPriceBars({
         </p>
       ))}
     </div>
+  );
+}
+
+/** The receipt a price came from, opening its expense. */
+function SourceLink({ teamId, source, sale, today }: { teamId: string; source: PriceSource; sale: boolean; today: string }) {
+  const { t, language } = useI18n();
+  const date = shortDate(source.spent_at, language, source.spent_at.slice(0, 4) !== today.slice(0, 4));
+  return (
+    <Link to={`/teams/${teamId}/expenses/${source.expense_id}`} title={source.title}
+      className={cx(
+        "-my-1 py-1 underline decoration-line-strong underline-offset-2 transition-colors",
+        "hover:text-body hover:decoration-current pointer-coarse:-my-2 pointer-coarse:py-2",
+      )}>
+      {t(sale ? "sale from the receipt of {date}" : "from the receipt of {date}", { date })}
+    </Link>
   );
 }
 
