@@ -5,7 +5,7 @@ import { Button, FormError, cx } from "./ui";
 import { useI18n } from "../lib/i18n";
 import {
   MAX_ZOOM, WHOLE, addCut, canAddCut, clampZoom, cutPhoto, isWhole, moveCut, moveEdge, photoPoint,
-  photoView, removeCut, scrollFor, type CutPlan, type Point, type Size,
+  photoView, removeCut, scrollFor, type CutPlan, type Edge, type Point, type Size,
 } from "../lib/photoCut";
 
 interface Props {
@@ -20,7 +20,19 @@ interface Props {
   onCancel: () => void;
 }
 
-type Handle = { kind: "left" } | { kind: "right" } | { kind: "cut"; index: number };
+type Handle = { kind: "edge"; edge: Edge } | { kind: "cut"; index: number };
+
+const EDGES: Record<Edge, string> = {
+  left: "Left edge",
+  right: "Right edge",
+  top: "Top edge",
+  bottom: "Bottom edge",
+};
+
+/** Whether a handle moves up and down rather than left and right. */
+function upright(handle: Handle): boolean {
+  return handle.kind === "cut" || handle.edge === "top" || handle.edge === "bottom";
+}
 
 const STEP = 0.01;
 /** One press of a zoom button or key. */
@@ -29,6 +41,8 @@ const ZOOM_STEP = 1.5;
 // Lines and knobs sit on any photo, so they are white with a dark edge rather
 // than theme colours.
 const LINE = "bg-white shadow-[0_0_0_1px_rgb(0_0_0/0.45)]";
+// A cut is dashed, so it does not read as an edge of the box.
+const CUT_LINE = "h-0 border-t-2 border-dashed border-white drop-shadow-[0_0_1px_rgb(0_0_0/0.9)]";
 const KNOB = cx(
   "rounded-full bg-white shadow-[0_0_0_1px_rgb(0_0_0/0.35),0_1px_4px_rgb(0_0_0/0.4)]",
   "transition-transform duration-150 group-active:scale-110 group-active:duration-0",
@@ -43,9 +57,10 @@ const ZOOM_BUTTON = cx(
 );
 
 /**
- * Trim a photo's sides and cut it across into parts, in a dialog over the
- * scanner. Side lines move left and right; cut lines are added below the last
- * one and move up and down, never past each other.
+ * Trim a photo to a box and cut it across into parts, in a dialog over the
+ * scanner. The box's edges move in from all four sides; cut lines are added
+ * below the last one and move up and down, never past each other or out of
+ * the box.
  */
 export function PhotoCutter({ file, url, maxParts, maxPhotos, onDone, onCancel }: Props) {
   const { t, language } = useI18n();
@@ -202,19 +217,18 @@ export function PhotoCutter({ file, url, maxParts, maxPhotos, onDone, onCancel }
   const full = parts >= maxParts;
 
   function at(handle: Handle, from: CutPlan): number {
-    if (handle.kind === "cut") return from.cuts[handle.index];
-    return handle.kind === "left" ? from.left : from.right;
+    return handle.kind === "cut" ? from.cuts[handle.index] : from[handle.edge];
   }
 
   function moved(handle: Handle, from: CutPlan, to: number): CutPlan {
-    return handle.kind === "cut" ? moveCut(from, handle.index, to) : moveEdge(from, handle.kind, to);
+    return handle.kind === "cut" ? moveCut(from, handle.index, to) : moveEdge(from, handle.edge, to);
   }
 
   /** Where the pointer is along the line's axis, as a fraction of the photo. */
   function pointerAt(event: PointerEvent, handle: Handle): number | null {
     const box = frameRef.current?.getBoundingClientRect();
     if (!box?.width || !box.height) return null;
-    return handle.kind === "cut"
+    return upright(handle)
       ? (event.clientY - box.top) / box.height
       : (event.clientX - box.left) / box.width;
   }
@@ -241,8 +255,8 @@ export function PhotoCutter({ file, url, maxParts, maxPhotos, onDone, onCancel }
   }
 
   function nudge(event: KeyboardEvent<HTMLDivElement>, handle: Handle) {
-    const forward = handle.kind === "cut" ? ["ArrowDown", "ArrowRight"] : ["ArrowRight", "ArrowDown"];
-    const back = handle.kind === "cut" ? ["ArrowUp", "ArrowLeft"] : ["ArrowLeft", "ArrowUp"];
+    const forward = upright(handle) ? ["ArrowDown", "ArrowRight"] : ["ArrowRight", "ArrowDown"];
+    const back = upright(handle) ? ["ArrowUp", "ArrowLeft"] : ["ArrowLeft", "ArrowUp"];
     const step = event.shiftKey ? STEP * 5 : STEP;
     if (forward.includes(event.key) || back.includes(event.key)) {
       event.preventDefault();
@@ -271,7 +285,9 @@ export function PhotoCutter({ file, url, maxParts, maxPhotos, onDone, onCancel }
   }
 
   const percent = (value: number) => `${(value * 100).toFixed(3)}%`;
-  const bounds = [0, ...plan.cuts];
+  const bounds = [plan.top, ...plan.cuts];
+  const across = { left: percent(plan.left), width: percent(plan.right - plan.left) };
+  const down = { top: percent(plan.top), height: percent(plan.bottom - plan.top) };
 
   return (
     <dialog
@@ -291,7 +307,7 @@ export function PhotoCutter({ file, url, maxParts, maxPhotos, onDone, onCancel }
           <div>
             <h2 id="photo-cutter-title" className="text-sm font-semibold">{t("Trim and cut the photo")}</h2>
             <p className="mt-0.5 text-[13px] text-muted">
-              {t("Move the side lines in to leave out the background. Add cuts to split a long photo into parts; each part is read as its own photo, so small print stays legible.")}
+              {t("Move the edges in to leave out the background. Add cuts to split a long photo into parts; each part is read as its own photo, so small print stays legible.")}
             </p>
           </div>
           {!isWhole(plan) && (
@@ -337,9 +353,11 @@ export function PhotoCutter({ file, url, maxParts, maxPhotos, onDone, onCancel }
                 className="block size-full"
               />
 
-              {/* What is left out of the kept width. */}
-              <div aria-hidden="true" className="absolute inset-y-0 left-0 bg-black/55" style={{ width: percent(plan.left) }} />
-              <div aria-hidden="true" className="absolute inset-y-0 right-0 bg-black/55" style={{ width: percent(1 - plan.right) }} />
+              {/* What is left out of the box. */}
+              <div aria-hidden="true" className="absolute inset-x-0 top-0 bg-black/55" style={{ height: percent(plan.top) }} />
+              <div aria-hidden="true" className="absolute inset-x-0 bottom-0 bg-black/55" style={{ height: percent(1 - plan.bottom) }} />
+              <div aria-hidden="true" className="absolute left-0 bg-black/55" style={{ ...down, width: percent(plan.left) }} />
+              <div aria-hidden="true" className="absolute right-0 bg-black/55" style={{ ...down, width: percent(1 - plan.right) }} />
 
               {/* Part numbers, so it is clear how many photos this becomes. */}
               {parts > 1 && bounds.map((top, i) => (
@@ -373,9 +391,9 @@ export function PhotoCutter({ file, url, maxParts, maxPhotos, onDone, onCancel }
                     onKeyDown={(e) => nudge(e, handle)}
                     data-handle=""
                     className={cx(HANDLE, "z-10 h-8 -translate-y-1/2 cursor-ns-resize pointer-coarse:h-11")}
-                    style={{ top: percent(cut), left: percent(plan.left), width: percent(plan.right - plan.left) }}
+                    style={{ ...across, top: percent(cut) }}
                   >
-                    <span aria-hidden="true" className={cx(LINE, "absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2")} />
+                    <span aria-hidden="true" className={cx(CUT_LINE, "absolute inset-x-0 top-1/2 -translate-y-1/2")} />
                     <button
                       type="button"
                       aria-label={t("Remove cut {count}", { count: index + 1 })}
@@ -396,15 +414,44 @@ export function PhotoCutter({ file, url, maxParts, maxPhotos, onDone, onCancel }
                 );
               })}
 
-              {(["left", "right"] as const).map((side) => {
-                const handle: Handle = { kind: side };
-                const value = side === "left" ? plan.left : plan.right;
+              {(["top", "bottom"] as const).map((edge) => {
+                const handle: Handle = { kind: "edge", edge };
+                const value = plan[edge];
                 return (
                   <div
-                    key={side}
+                    key={edge}
                     role="slider"
                     tabIndex={0}
-                    aria-label={side === "left" ? t("Left edge") : t("Right edge")}
+                    aria-label={t(EDGES[edge])}
+                    aria-orientation="vertical"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(value * 100)}
+                    aria-valuetext={`${Math.round(value * 100)}%`}
+                    onPointerDown={(e) => startDrag(e, handle)}
+                    onPointerMove={drag}
+                    onPointerUp={drop}
+                    onPointerCancel={drop}
+                    onKeyDown={(e) => nudge(e, handle)}
+                    data-handle=""
+                    className={cx(HANDLE, "z-20 h-8 -translate-y-1/2 cursor-ns-resize pointer-coarse:h-11")}
+                    style={{ ...across, top: percent(value) }}
+                  >
+                    <span aria-hidden="true" className={cx(LINE, "absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2")} />
+                    <span aria-hidden="true" className={cx(KNOB, "absolute left-1/2 top-1/2 h-3 w-10 -translate-x-1/2 -translate-y-1/2")} />
+                  </div>
+                );
+              })}
+
+              {(["left", "right"] as const).map((edge) => {
+                const handle: Handle = { kind: "edge", edge };
+                const value = plan[edge];
+                return (
+                  <div
+                    key={edge}
+                    role="slider"
+                    tabIndex={0}
+                    aria-label={t(EDGES[edge])}
                     aria-orientation="horizontal"
                     aria-valuemin={0}
                     aria-valuemax={100}
@@ -416,8 +463,8 @@ export function PhotoCutter({ file, url, maxParts, maxPhotos, onDone, onCancel }
                     onPointerCancel={drop}
                     onKeyDown={(e) => nudge(e, handle)}
                     data-handle=""
-                    className={cx(HANDLE, "inset-y-0 z-20 w-8 -translate-x-1/2 cursor-ew-resize pointer-coarse:w-11")}
-                    style={{ left: percent(value) }}
+                    className={cx(HANDLE, "z-20 w-8 -translate-x-1/2 cursor-ew-resize pointer-coarse:w-11")}
+                    style={{ ...down, left: percent(value) }}
                   >
                     <span aria-hidden="true" className={cx(LINE, "absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2")} />
                     <span aria-hidden="true" className={cx(KNOB, "absolute left-1/2 top-1/2 h-10 w-3 -translate-x-1/2 -translate-y-1/2")} />

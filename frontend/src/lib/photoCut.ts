@@ -1,60 +1,75 @@
 /**
- * Trimming a photo's sides and cutting it across into parts.
+ * Trimming a photo to a box and cutting it across into parts.
  *
- * A receipt is long and narrow, so a photo of it is mostly table on either
- * side, and shrunk to the size a model reads it at, a long one's print gets
- * too small to read. Two side lines trim the width; cut lines across split the
- * height into parts that are read as pages of one receipt, each at full size.
+ * A receipt is long and narrow, so a photo of it is mostly table around it,
+ * and shrunk to the size a model reads it at, a long one's print gets too
+ * small to read. The box's four edges trim what is not the receipt; cut lines
+ * across split the box into parts that are read as pages of one receipt, each
+ * at full size.
  *
  * Positions are fractions of the photo, so they hold at any display size.
  */
 
 export interface CutPlan {
-  /** Where the kept width starts and ends, 0 to 1. */
+  /** The kept box, 0 to 1 across and down the photo. */
   left: number;
   right: number;
-  /** Where the photo is cut across, ascending, strictly between 0 and 1. */
+  top: number;
+  bottom: number;
+  /** Where the box is cut across, ascending, strictly between top and bottom. */
   cuts: number[];
 }
+
+export type Edge = "left" | "right" | "top" | "bottom";
 
 /** The narrowest kept width, and the shortest part, as a fraction of the photo. */
 export const MIN_PART = 0.04;
 
-export const WHOLE: CutPlan = { left: 0, right: 1, cuts: [] };
+export const WHOLE: CutPlan = { left: 0, right: 1, top: 0, bottom: 1, cuts: [] };
 
 function clamp(value: number, low: number, high: number): number {
   return Math.min(high, Math.max(low, value));
 }
 
 export function isWhole(plan: CutPlan): boolean {
-  return plan.left === 0 && plan.right === 1 && plan.cuts.length === 0;
+  return (
+    plan.left === 0 && plan.right === 1 && plan.top === 0 && plan.bottom === 1 && plan.cuts.length === 0
+  );
 }
 
-/** A side line moved towards `to`; it stops short of the other side. */
-export function moveEdge(plan: CutPlan, side: "left" | "right", to: number): CutPlan {
-  return side === "left"
-    ? { ...plan, left: clamp(to, 0, plan.right - MIN_PART) }
-    : { ...plan, right: clamp(to, plan.left + MIN_PART, 1) };
+/** An edge of the box moved towards `to`. It stops short of the opposite edge,
+ * and the top and bottom also of the nearest cut, so no part is left empty. */
+export function moveEdge(plan: CutPlan, edge: Edge, to: number): CutPlan {
+  switch (edge) {
+    case "left":
+      return { ...plan, left: clamp(to, 0, plan.right - MIN_PART) };
+    case "right":
+      return { ...plan, right: clamp(to, plan.left + MIN_PART, 1) };
+    case "top":
+      return { ...plan, top: clamp(to, 0, (plan.cuts[0] ?? plan.bottom) - MIN_PART) };
+    case "bottom":
+      return { ...plan, bottom: clamp(to, (plan.cuts.at(-1) ?? plan.top) + MIN_PART, 1) };
+  }
 }
 
-/** A cut moved towards `to`; it stops short of its neighbours, so cuts never
- * pass each other and no part is left empty. */
+/** A cut moved towards `to`; it stops short of its neighbours and the box's
+ * top and bottom, so cuts never pass each other and no part is left empty. */
 export function moveCut(plan: CutPlan, index: number, to: number): CutPlan {
-  const low = (plan.cuts[index - 1] ?? 0) + MIN_PART;
-  const high = (plan.cuts[index + 1] ?? 1) - MIN_PART;
+  const low = (plan.cuts[index - 1] ?? plan.top) + MIN_PART;
+  const high = (plan.cuts[index + 1] ?? plan.bottom) - MIN_PART;
   return { ...plan, cuts: plan.cuts.map((cut, i) => (i === index ? clamp(to, low, high) : cut)) };
 }
 
 /** Whether the last part is tall enough to cut in two. */
 export function canAddCut(plan: CutPlan): boolean {
-  return 1 - (plan.cuts.at(-1) ?? 0) >= 2 * MIN_PART;
+  return plan.bottom - (plan.cuts.at(-1) ?? plan.top) >= 2 * MIN_PART;
 }
 
 /** A new cut halfway down the last part, below every other cut. */
 export function addCut(plan: CutPlan): CutPlan {
   if (!canAddCut(plan)) return plan;
-  const last = plan.cuts.at(-1) ?? 0;
-  return { ...plan, cuts: [...plan.cuts, (last + 1) / 2] };
+  const last = plan.cuts.at(-1) ?? plan.top;
+  return { ...plan, cuts: [...plan.cuts, (last + plan.bottom) / 2] };
 }
 
 export function removeCut(plan: CutPlan, index: number): CutPlan {
@@ -68,12 +83,12 @@ export interface Piece {
   height: number;
 }
 
-/** The parts of a `width` x `height` photo, in pixels, top to bottom. They
- * share edges and never overlap, so no line of the receipt is read twice. */
+/** The parts of a `width` x `height` photo inside the box, in pixels, top to
+ * bottom. They share edges and never overlap, so no line is read twice. */
 export function pieces(plan: CutPlan, width: number, height: number): Piece[] {
   const x = Math.round(plan.left * width);
   const kept = Math.max(1, Math.round(plan.right * width) - x);
-  const ys = [0, ...plan.cuts, 1].map((at) => Math.round(at * height));
+  const ys = [plan.top, ...plan.cuts, plan.bottom].map((at) => Math.round(at * height));
   return ys.slice(1).map((bottom, i) => ({
     x,
     y: ys[i],
