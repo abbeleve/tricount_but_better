@@ -4,6 +4,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppShell, PageTitle } from "../components/Layout";
 import { ReceiptScanner } from "../components/ReceiptScanner";
 import { CategoryPicker } from "../components/CategoryPicker";
+import { LevelTree } from "../components/LevelTree";
 import { BasketComparison, PriceVerdict } from "../components/PriceViz";
 import { PriceReview } from "../components/PriceReview";
 import { ProductLinker, TagIcon } from "../components/ProductLinker";
@@ -407,7 +408,7 @@ export default function ExpenseForm() {
     </div>
   );
 
-  /** Under a line: which product it is, whether it was on sale, and how its price compares. */
+  /** Under a line: which product it is and what that is, whether it was on sale, and how its price compares. */
   function linePrice(item: ItemDraft) {
     const paid = toMinor(item.amount, currency);
     const product = item.productId ? productsById.get(item.productId) : undefined;
@@ -437,6 +438,10 @@ export default function ExpenseForm() {
             </button>
           )}
         </div>
+        {item.track !== false && product?.levels && (
+          // What the linked good is remembered as, set in under its name past the tag icon.
+          <LevelTree levels={product.levels} compact className="pl-5" />
+        )}
         {item.track !== false && product && paid !== null && paid > 0 && (
           <PriceVerdict paid={paidPerUnit(paid, item.quantity)} product={product} shopId={shopId} currency={currency} className="self-start" />
         )}

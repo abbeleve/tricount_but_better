@@ -4,7 +4,8 @@ import { AppShell, PageTitle } from "../components/Layout";
 import { PriceHistory, ShopPriceBars } from "../components/PriceViz";
 import { PriceEditor } from "../components/PriceEditor";
 import { PriceReview } from "../components/PriceReview";
-import { Button, Card, ErrorState, FormError, Input, Skeleton, cx } from "../components/ui";
+import { LevelTree } from "../components/LevelTree";
+import { Button, Card, ErrorState, FormError, Input, Skeleton } from "../components/ui";
 import {
   useProduct, useProductMutations, useProducts, useReviewPrices, useTeam,
 } from "../hooks/queries";
@@ -12,9 +13,9 @@ import { ApiError } from "../lib/api";
 import { todayLocal } from "../lib/dates";
 import { useI18n } from "../lib/i18n";
 import { formatMoney } from "../lib/money";
-import { formatPackSize, formatPercent, shortDate } from "../lib/price-format";
+import { formatPercent, shortDate } from "../lib/price-format";
 import { initialAnswers, priceSpread } from "../lib/prices";
-import type { PriceAnswer, ProductDetail, ProductLevels } from "../lib/types";
+import type { PriceAnswer, ProductDetail } from "../lib/types";
 
 export default function ProductPage() {
   const { teamId = "", productId = "" } = useParams();
@@ -176,46 +177,6 @@ export default function ProductPage() {
         <ManageCard teamId={teamId} product={data} />
       </div>
     </AppShell>
-  );
-}
-
-/** How far each level sits in from the one it narrows, in px. */
-const LEVEL_INDENT = 20;
-
-/**
- * A good's levels as a tree, general to specific: "хлеб", under it "белый
- * нарезной", under that the brand, then the pack size. A level the good has no
- * word for keeps its row, so every level sits at the same depth on every page.
- */
-function LevelTree({ levels }: { levels: ProductLevels }) {
-  const { t, language } = useI18n();
-  const size = levels.by_weight
-    ? t("by weight")
-    : levels.size && levels.unit ? formatPackSize(levels.size, levels.unit, language) : null;
-  const steps = [
-    { label: t("Kind"), value: levels.kind },
-    { label: t("Variety"), value: levels.variety },
-    { label: t("Brand"), value: levels.brand },
-    { label: t("Size"), value: size },
-  ];
-
-  return (
-    <ol className="text-[13px] leading-5">
-      {steps.map((step, depth) => (
-        <li key={step.label} className="relative flex items-baseline justify-between gap-3 py-1.5"
-          style={{ paddingLeft: depth * LEVEL_INDENT }}>
-          {depth > 0 && (
-            // An elbow from under the level above to this one.
-            <span aria-hidden="true" className="absolute -top-1 h-5 w-2.5 rounded-bl-[4px] border-b border-l border-line-strong"
-              style={{ left: (depth - 1) * LEVEL_INDENT + 6 }} />
-          )}
-          <span className={cx("min-w-0 break-words", step.value ? "text-body" : "text-subtle", depth === 0 && "font-medium")}>
-            {step.value ?? t("not named")}
-          </span>
-          <span className="shrink-0 text-[12px] text-muted">{step.label}</span>
-        </li>
-      ))}
-    </ol>
   );
 }
 

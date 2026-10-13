@@ -457,6 +457,7 @@ class ProductOut(BaseModel):
     last_bought_on: date | None
     purchase_count: int
     pending: list[PriceChangeOut]
+    levels: ProductLevels | None = Field(description="What the good was matched on, if known.")
 
 
 class ProductListOut(BaseModel):
@@ -465,7 +466,6 @@ class ProductListOut(BaseModel):
 
 
 class ProductDetailOut(ProductOut):
-    levels: ProductLevels | None = Field(description="What the good was matched on, if known.")
     history: list[PricePointOut]
     aliases: list[ProductAliasOut]
 

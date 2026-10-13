@@ -32,7 +32,8 @@ Photograph the receipt, and a vision model reads it into editable line items.
   team's shops by the name it prints (or the model recognises it); an unknown
   shop is offered as a new one, and the printed name is remembered so the next
   receipt from there matches by itself. Under each line the form shows whether
-  another shop sells it cheaper, and a card shows what the same items would
+  another shop sells it cheaper — in red when you paid more here, in green when
+  this shop is the cheapest known — and a card shows what the same items would
   have cost elsewhere. The **Prices** tab lists every good with its lowest price
   and where, searchable in any case and by the name a till printed; each good
   has a page with its price in every shop and a history of what was paid.
@@ -50,9 +51,9 @@ Photograph the receipt, and a vision model reads it into editable line items.
   another good, and when only a brand would tell two goods apart and the line
   prints none, you choose. The codes a till prints in front of a name — the
   "[M+]0829" on marked goods, a leading article number — are not part of it,
-  so three packs of one good are one good. The product page shows what a good
-  is recognised as, as a tree: the kind, the variety under it, then the brand
-  and the pack size. The kinds of goods the team already has are offered to the
+  so three packs of one good are one good. The product page, and every line of
+  the expense form linked to a good, show what that good is recognised as, as a
+  tree: the kind, the variety under it, then the brand and the pack size. The kinds of goods the team already has are offered to the
   model, so it keeps to the same words.
   Shops name the same good differently, so two products can be **merged**.
   Prices can also be added and edited by hand — a price seen on a shelf, a

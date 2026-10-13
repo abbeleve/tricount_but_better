@@ -436,6 +436,25 @@ def test_a_new_good_keeps_the_levels_its_line_came_with(client, team, alice):
     }
 
 
+def test_the_list_says_what_each_good_is(client, team, alice):
+    """The expense form draws a linked line's levels from the list of goods."""
+    lenta = _shop(client, team, alice, "Lenta")
+    saved = _buy(
+        client,
+        team,
+        alice,
+        lenta["id"],
+        [
+            {"name": "ХЛЕБ БЕЛ НАРЕЗ 350Г", "total": 54_99, "levels": LEVELS},
+            {"name": "САЛФЕТКИ ВЛАЖНЫЕ", "total": 89_99},
+        ],
+    )
+    ids = [item["product_id"] for item in saved["items"]]
+    listed = {p["id"]: p["levels"] for p in _products(client, team, alice, ids=ids)["items"]}
+    assert listed[ids[0]]["variety"] == "белый нарезной"
+    assert listed[ids[1]] is None
+
+
 def test_a_good_without_levels_takes_its_next_lines_and_keeps_them(client, team, alice):
     lenta = _shop(client, team, alice, "Lenta")
     line = {"name": "ХЛЕБ БЕЛ НАРЕЗ 350Г", "total": 54_99}

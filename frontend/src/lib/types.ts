@@ -328,11 +328,11 @@ export interface Product {
   last_bought_on: string | null;
   purchase_count: number;
   pending: PriceChange[];
+  /** What a scanned line is matched on, when a receipt has described it. */
+  levels: ProductLevels | null;
 }
 
 export interface ProductDetail extends Product {
-  /** What a scanned line is matched on, when a receipt has described it. */
-  levels: ProductLevels | null;
   history: PricePoint[];
   aliases: { shop_id: string; shop_name: string; name: string }[];
 }
