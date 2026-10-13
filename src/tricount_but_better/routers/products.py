@@ -189,6 +189,7 @@ def build_products(
             last_bought_on=own[-1].spent_at if own else None,
             purchase_count=len(own),
             pending=pending,
+            levels=ProductLevels.of(levels_of(product)),
         )
         if not detail:
             out.append(ProductOut(**fields))
@@ -199,7 +200,6 @@ def build_products(
         out.append(
             ProductDetailOut(
                 **fields,
-                levels=ProductLevels.of(levels_of(product)),
                 history=[
                     PricePointOut(
                         expense_id=line.expense_id,

@@ -51,11 +51,12 @@ export function PriceVerdict({
     );
   }
   const percent = verdict.percent === null ? "" : ` (${formatPercent(verdict.percent, language)}%)`;
-  // Paying a little more than somewhere else is information, not a mistake:
-  // nobody crosses town for one item. So it stays neutral, and only a good
-  // buy gets colour.
+  // Paying more than somewhere else is red, so an overpaid line stands out of
+  // a long receipt. It stays a note on the line: another shop is suggested
+  // only when the whole basket is worth a trip.
   return verdict.kind === "dearer" ? (
-    <span className={cx(chip, "bg-surface-2 font-normal text-muted", className)}>
+    <span className={cx(chip, "bg-price-high-soft text-price-high", className)}>
+      <span aria-hidden="true">↑</span>
       <span className="truncate">
         {t("{amount} less at {shop}", {
           amount: formatMoney(verdict.diff, currency) + percent,
