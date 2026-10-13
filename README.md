@@ -19,6 +19,11 @@ Photograph the receipt, and a vision model reads it into editable line items.
   structured line items. Photos and scan results are not stored by the app;
   only the lines you save as an expense persist. Everyone is on every line by
   default; tap a name off a line and they stop paying towards it.
+  Before reading, tap a photo to trim it and cut it into parts: two side lines
+  leave out the table around the receipt, and lines across split a long one
+  into parts that never overlap. Each part is read as its own page, at full
+  size, so small print stays legible. Zoom in to place the lines (buttons,
+  pinch, or Ctrl/⌘ + scroll).
 - **Spending analytics** — the Spending section in each team shows this week/month/year against the full previous period, a comparison chart, and history grouped by week, month, or year. Weeks start on Monday; totals use purchase dates and include refunds, excluding plans and paybacks.
 - **Planned purchases** — keep a shopping list with optional prices. Finish the
   purchase through the expense form; plans do not affect balances.
