@@ -8,6 +8,11 @@ import os
 # engine from settings at import time.
 os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("JWT_SECRET", "test-secret-not-used-anywhere-real")
+# Never a real Polza key, from the environment or the checkout's
+# .secrets/polza_api_key: a test that forgets to stub the model must fail
+# instead of sending a real request.
+os.environ["POLZA_API_KEY"] = ""
+os.environ["POLZA_API_KEY_FILE"] = os.devnull
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

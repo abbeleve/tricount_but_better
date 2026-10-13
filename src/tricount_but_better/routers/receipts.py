@@ -194,7 +194,7 @@ def _to_out(parsed: ParsedReceipt, currency: str, catalog: ScanCatalog) -> Recei
         parsed.items, levels, matches, strict=True
     ):
         try:
-            total = to_minor(item.total, currency)
+            total = to_minor(item.total, currency) if item.total is not None else None
             unit_price = (
                 to_minor(item.unit_price, currency) if item.unit_price is not None else None
             )
@@ -230,7 +230,7 @@ def _to_out(parsed: ParsedReceipt, currency: str, catalog: ScanCatalog) -> Recei
         currency=currency,
         items=items,
         parsed_total=parsed_total,
-        items_total=sum(item.total for item in items),
+        items_total=sum(item.total for item in items if item.total is not None),
         notes=parsed.notes,
     )
 

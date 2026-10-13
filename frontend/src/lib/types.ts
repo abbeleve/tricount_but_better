@@ -195,10 +195,12 @@ export interface ProductLevels {
 }
 
 export interface ParsedReceiptItem {
+  /** Empty when the model could not read it; the form asks for one. */
   name: string;
   quantity: string | null;
   unit_price: number | null;
-  total: number;
+  /** Null when the model could not read it; the form asks for one. */
+  total: number | null;
   /** A readable name for a new product, written by the model. */
   product_name: string | null;
   /** Sent back on save, so a new product keeps them for matching later lines. */

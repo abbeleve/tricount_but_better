@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     # A whole scan, streamed or not. Keep it under nginx's proxy_read_timeout
     # (deploy/nginx.conf), or nginx answers 504 while the model still reads.
     vlm_timeout_seconds: int = 600
+    # The longest answer the model may write. Every receipt line costs a
+    # hundred-odd tokens of JSON, so a very long receipt (or several pages) can
+    # reach it; the scan then fails as cut off rather than returning half.
+    vlm_max_tokens: int = 16000
     # How many of the team's most recently bought goods the model is shown to
     # match receipt lines against. Each costs a dozen or so prompt tokens.
     vlm_known_products: int = 200

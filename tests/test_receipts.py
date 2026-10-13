@@ -126,6 +126,23 @@ def test_model_error_and_empty_scan_are_reported(
     assert "no line items" in response.json()["detail"]
 
 
+def test_a_line_the_model_could_not_read_is_left_for_a_person_to_fill_in(
+    client, team, alice, monkeypatch, scanning_enabled
+) -> None:
+    receipt = ParsedReceipt.model_validate(
+        {"items": [{"name": "Хлеб", "total": "62.00"}, {"name": "Сыр", "total": "?"}]}
+    )
+    _install(monkeypatch, FakeParser(receipt=receipt))
+    response = _scan(client, team, alice, _jpeg())
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert [(item["name"], item["total"]) for item in body["items"]] == [
+        ("Хлеб", 62_00),
+        ("Сыр", None),
+    ]
+    assert body["items_total"] == 62_00
+
+
 def test_invalid_image_and_excess_pages_are_rejected(
     client, team, alice, monkeypatch, scanning_enabled
 ) -> None:
