@@ -553,6 +553,13 @@ export default function ExpenseForm() {
               onDismiss={() => setShopNotice(null)}
             />
           )}
+          {/* Above the lines: chosen with the rest of the header, not after a long receipt. */}
+          <CategoryPicker
+            teamId={teamId}
+            value={categoryId}
+            onChange={setCategoryId}
+            hint={t("Optional, but it makes the breakdown useful.")}
+          />
         </Card>
 
         {/* ----------------------------------------------------- line items */}
@@ -688,13 +695,7 @@ export default function ExpenseForm() {
           </Card>
         )}
 
-        <Card className="flex flex-col gap-4 p-4 sm:p-5">
-          <CategoryPicker
-            teamId={teamId}
-            value={categoryId}
-            onChange={setCategoryId}
-            hint={t("Optional, but it makes the breakdown useful.")}
-          />
+        <Card className="p-4 sm:p-5">
           <Field label={t("Note")} hint={t("Anything worth remembering later.")}>
             {(id) => (
               <Textarea id={id} value={note} onChange={(e) => setNote(e.target.value)} />
