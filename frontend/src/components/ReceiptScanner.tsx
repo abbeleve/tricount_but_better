@@ -1,6 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { Button, Card, FormError, Skeleton, cx } from "./ui";
+import { PhotoCutter } from "./PhotoCutter";
 import { useServerConfig } from "../hooks/queries";
 import { ApiError, api } from "../lib/api";
 import { useI18n } from "../lib/i18n";
@@ -60,6 +61,7 @@ export function ReceiptScanner<T = ReceiptScan>({
   const [pasting, setPasting] = useState(false);
   const [pasteFallback, setPasteFallback] = useState(false);
   const [inputError, setInputError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
   const max = config.data?.max_receipt_images ?? 8;
   const maxUploadMb = config.data?.max_upload_mb ?? 12;
   const available = config.data?.receipt_scanning !== false;
@@ -187,6 +189,22 @@ export function ReceiptScanner<T = ReceiptScan>({
     setInputError(null);
   }
 
+  /** A photo trimmed or cut into parts takes its place, parts in order. */
+  function replace(url: string, files: File[]) {
+    const index = shotList.current.findIndex((s) => s.url === url);
+    if (index < 0 || !mounted.current) return;
+    const parts = files.map((file) => {
+      const part = URL.createObjectURL(file);
+      urls.current.add(part);
+      return { file, url: part };
+    });
+    URL.revokeObjectURL(url);
+    urls.current.delete(url);
+    shotList.current = [...shotList.current.slice(0, index), ...parts, ...shotList.current.slice(index + 1)];
+    setShots(shotList.current);
+    setInputError(null);
+  }
+
   /** "Add another": the camera on a phone, the file picker with a mouse. */
   function addAnother() {
     const coarse = window.matchMedia("(pointer: coarse)").matches;
@@ -195,6 +213,7 @@ export function ReceiptScanner<T = ReceiptScan>({
 
   const working = upload.isPending;
   const failed = upload.isError;
+  const editingShot = working ? undefined : shots.find((shot) => shot.url === editing);
 
   return (
     <div
@@ -281,11 +300,30 @@ export function ReceiptScanner<T = ReceiptScan>({
         <ul className="no-scrollbar -mx-1 mb-4 mt-3 flex snap-x gap-2 overflow-x-auto px-1 py-1">
           {shots.map((shot, i) => (
             <li key={shot.url} className="relative shrink-0 snap-start">
-              <img
-                src={shot.url}
-                alt={t("Photo {count}", { count: i + 1 })}
-                className="h-28 w-20 rounded-control border border-line object-cover"
-              />
+              <button
+                type="button"
+                disabled={working}
+                aria-label={t("Trim or cut photo {count}", { count: i + 1 })}
+                onClick={() => setEditing(shot.url)}
+                className="block rounded-control transition active:scale-[0.97] active:duration-0 disabled:active:scale-100"
+              >
+                <img
+                  src={shot.url}
+                  alt={t("Photo {count}", { count: i + 1 })}
+                  className="h-28 w-20 rounded-control border border-line object-cover"
+                />
+                {!working && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute bottom-1 left-1 grid size-6 place-items-center rounded-full bg-black/60 text-white backdrop-blur-sm"
+                  >
+                    {/* Crop marks: the photo can be trimmed and cut. */}
+                    <svg viewBox="0 0 16 16" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4.5 1.5v10h10M1.5 4.5h10v10" />
+                    </svg>
+                  </span>
+                )}
+              </button>
               {!working && (
                 <button
                   type="button"
@@ -323,6 +361,25 @@ export function ReceiptScanner<T = ReceiptScan>({
             </li>
           )}
         </ul>
+      )}
+      {shots.length > 0 && !working && (
+        <p className="-mt-2 mb-1 text-center text-[12px] text-muted">
+          <span className="pointer-coarse:hidden">{t("Click a photo to trim its sides or cut a long one into parts.")}</span>
+          <span className="hidden pointer-coarse:inline">{t("Tap a photo to trim its sides or cut a long one into parts.")}</span>
+        </p>
+      )}
+      {editingShot && (
+        <PhotoCutter
+          file={editingShot.file}
+          url={editingShot.url}
+          maxParts={max - shots.length + 1}
+          maxPhotos={max}
+          onDone={(parts) => {
+            if (parts) replace(editingShot.url, parts);
+            setEditing(null);
+          }}
+          onCancel={() => setEditing(null)}
+        />
       )}
       {!working && (
         <div className="mb-3 mt-3 flex flex-col items-center gap-2">
