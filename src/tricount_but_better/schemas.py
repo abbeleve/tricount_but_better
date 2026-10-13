@@ -749,10 +749,10 @@ class PushSubscriptionRemove(BaseModel):
 
 
 class ParsedItemOut(BaseModel):
-    name: str
+    name: str = Field(description="Empty when the model could not read it.")
     quantity: Decimal | None
     unit_price: int | None
-    total: int
+    total: int | None = Field(description="None when the model could not read it.")
     # A readable name for the good, for a new product; the model writes it.
     product_name: str | None = None
     levels: ProductLevels | None = None

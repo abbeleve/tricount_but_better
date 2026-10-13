@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+from datetime import date
 from decimal import Decimal
 
 import httpx
@@ -21,9 +22,10 @@ from tricount_but_better.vlm import (
     polza,
 )
 from tricount_but_better.vlm.schema import (
-    MAX_UNION_FIELDS,
     PRICE_LIST_JSON_SCHEMA,
     RECEIPT_JSON_SCHEMA,
+    ParsedPriceList,
+    ParsedReceipt,
 )
 
 
@@ -99,18 +101,21 @@ def test_agent_sdk_model_left_in_the_environment_falls_back_to_the_default(monke
     assert Settings().vlm_model == "anthropic/claude-sonnet-5"
 
 
-def _union_fields(node: object) -> int:
+def _types(node: object) -> list:
     if isinstance(node, list):
-        return sum(_union_fields(item) for item in node)
+        return [found for item in node for found in _types(item)]
     if not isinstance(node, dict):
-        return 0
-    own = isinstance(node.get("type"), list) or "anyOf" in node
-    return own + sum(_union_fields(value) for value in node.values())
+        return []
+    own = [node["type"]] if "type" in node and not isinstance(node["type"], dict) else []
+    own += [node["anyOf"]] if "anyOf" in node else []
+    return own + [found for value in node.values() for found in _types(value)]
 
 
 @pytest.mark.parametrize("schema", [RECEIPT_JSON_SCHEMA, PRICE_LIST_JSON_SCHEMA])
-def test_schemas_stay_within_the_structured_output_union_limit(schema: dict) -> None:
-    assert _union_fields(schema) <= MAX_UNION_FIELDS
+def test_a_missing_value_is_an_empty_string_never_null(schema: dict) -> None:
+    # One rule for the model, and no union types: Claude's structured outputs
+    # allow only 16 of them per request.
+    assert all(isinstance(kind, str) and kind != "null" for kind in _types(schema))
 
 
 def test_empty_levels_read_as_none() -> None:
@@ -345,8 +350,6 @@ async def test_polza_says_when_nothing_is_known_yet(monkeypatch: pytest.MonkeyPa
 
 @pytest.mark.asyncio
 async def test_polza_reads_a_price_list_with_todays_date(monkeypatch: pytest.MonkeyPatch) -> None:
-    from datetime import date
-
     seen = []
 
     def answer(request: httpx.Request) -> httpx.Response:
@@ -413,3 +416,160 @@ async def test_polza_reads_a_price_list_with_todays_date(monkeypatch: pytest.Mon
     assert (str(coffee.price), str(coffee.regular_price)) == ("1199.00", "1599.00")
     assert coffee.sale_until == date(2026, 10, 20)
     assert (tea.price, tea.sale_until) == (None, None)
+
+
+def _raw_stream(body: str) -> httpx.Response:
+    return httpx.Response(200, headers={"content-type": "text/event-stream"}, text=body)
+
+
+@pytest.mark.asyncio
+async def test_polza_stream_that_ends_mid_answer_is_not_read_as_a_bad_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # No finish reason and no [DONE]: the connection closed partway through.
+    body = "data: " + json.dumps(_delta('{"items": [{"name": ')) + "\n\n"
+    _stream_into(monkeypatch, _raw_stream(body), [])
+
+    with pytest.raises(VlmError, match="connection broke"):
+        await get_parser(Settings(polza_api_key="test-key")).parse([b"image"])
+
+
+@pytest.mark.asyncio
+async def test_polza_reads_every_providers_name_for_the_output_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stream_into(monkeypatch, _sse(_delta('{"items": ['), _delta("", finish="MAX_TOKENS")), [])
+
+    with pytest.raises(VlmError, match="cut off"):
+        await get_parser(Settings(polza_api_key="test-key")).parse([b"image"])
+
+
+RECEIPT = '{"items": [{"name": "Молоко", "total": "104.50"}]}'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "```json\n" + RECEIPT + "\n```",
+        "<think>The total is {104.50}.</think>\n" + RECEIPT,
+        "Here is the receipt:\n" + RECEIPT,
+        # A raw line break or tab inside a string, which strict JSON refuses.
+        RECEIPT.replace("Молоко", "Мол\nоко\t3,2%"),
+    ],
+)
+async def test_polza_reads_json_the_schema_did_not_hold_the_model_to(
+    monkeypatch: pytest.MonkeyPatch, answer: str
+) -> None:
+    _stream_into(monkeypatch, _sse(_delta(answer), _delta("", finish="stop")), [])
+
+    result = await get_parser(Settings(polza_api_key="test-key")).parse([b"image"])
+
+    assert str(result.receipt.items[0].total) == "104.50"
+
+
+@pytest.mark.asyncio
+async def test_polza_stream_keeps_unicode_line_separators_inside_an_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Written raw, as a JavaScript server's JSON.stringify leaves them, and
+    # after an empty data line that must be skipped.
+    answer = RECEIPT.replace("Молоко", "Мол око\u0085")
+    events = [_delta(answer), _delta("", finish="stop")]
+    body = "data:\n\n" + "".join(f"data: {json.dumps(e, ensure_ascii=False)}\n\n" for e in events)
+    _stream_into(monkeypatch, _raw_stream(body + "data: [DONE]\n\n"), [])
+
+    result = await get_parser(Settings(polza_api_key="test-key")).parse([b"image"])
+
+    assert result.receipt.items[0].name == "Мол око"
+
+
+@pytest.mark.asyncio
+async def test_polza_error_in_a_whole_reply_is_reported_as_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reply = httpx.Response(200, json={"error": {"code": 502, "message": "secret upstream"}})
+    _stream_into(monkeypatch, reply, [])
+
+    with pytest.raises(VlmError, match=r"Polza API error \(502\)") as caught:
+        await get_parser(Settings(polza_api_key="test-key")).parse([b"image"])
+    assert "secret upstream" not in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    ("written", "read"),
+    [
+        ("249.90", "249.90"),
+        ("249,90", "249.90"),
+        ("0,482", "0.482"),
+        ("1 199,00", "1199.00"),
+        ("1 199,00", "1199.00"),
+        ("1,199.00", "1199.00"),
+        ("1.199,00", "1199.00"),
+        ("1,234,567", "1234567"),
+        ("249.90 ₽", "249.90"),
+        ("RUB 249.90", "249.90"),
+        ("−50,00", "-50.00"),
+        (104.5, "104.5"),
+        (3, "3"),
+        (Decimal("89.90"), "89.90"),
+        ("", None),
+        ("?", None),
+        ("2 x 49.90", None),
+        ("NaN", None),
+        (True, None),
+    ],
+)
+def test_amounts_are_read_the_way_models_write_them(written: object, read: str | None) -> None:
+    item = ParsedItem.model_validate({"name": "A", "total": written})
+    assert (str(item.total) if item.total is not None else None) == read
+
+
+def test_one_unreadable_line_does_not_sink_the_receipt() -> None:
+    receipt = ParsedReceipt.model_validate(
+        {
+            "purchased_at": "01.09.2026",
+            "items": [
+                {"name": "Хлеб", "total": "62.00"},
+                # Kept for a person to fill in: dropping it would shorten the total.
+                {"name": "Сыр", "total": "?"},
+                {"name": None, "product_name": "Молоко 3,2%", "total": "104.50"},
+                {"name": "", "total": None},
+                "not a line",
+            ],
+        }
+    )
+
+    assert receipt.purchased_at == date(2026, 9, 1)
+    assert [(item.name, item.total) for item in receipt.items] == [
+        ("Хлеб", Decimal("62.00")),
+        ("Сыр", None),
+        ("Молоко 3,2%", Decimal("104.50")),
+    ]
+    assert receipt.items_total == Decimal("166.50")
+
+
+@pytest.mark.parametrize(
+    ("written", "read"),
+    [
+        ("2026-09-01", date(2026, 9, 1)),
+        ("2026-09-01T14:32:00Z", date(2026, 9, 1)),
+        ("01.09.2026 14:32", date(2026, 9, 1)),
+        ("01.09.26", date(2026, 9, 1)),
+        ("31.02.2026", None),
+        ("unknown", None),
+        (None, None),
+    ],
+)
+def test_a_purchase_date_the_model_wrote_oddly_does_not_sink_the_receipt(
+    written: object, read: date | None
+) -> None:
+    receipt = ParsedReceipt.model_validate({"purchased_at": written, "items": []})
+    assert receipt.purchased_at == read
+
+
+def test_one_unreadable_price_does_not_sink_the_list() -> None:
+    prices = ParsedPriceList.model_validate(
+        {"items": [{"name": "Кофе", "price": "1 199,00 ₽"}, {"name": None, "price": None}, 7]}
+    )
+    assert [(item.name, item.price) for item in prices.items] == [("Кофе", Decimal("1199.00"))]

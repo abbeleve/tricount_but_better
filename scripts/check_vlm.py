@@ -94,7 +94,8 @@ async def main() -> int:
     for item in receipt.items:
         quantity = f" x{item.quantity}" if item.quantity is not None else ""
         sale = f"  [sale, usually {item.regular_price}]" if item.discounted else ""
-        print(f"  {item.total:>10}  {item.name}{quantity}{sale}")
+        total = "?" if item.total is None else item.total
+        print(f"  {total:>10}  {item.name or '?'}{quantity}{sale}")
         if item.product_name:
             print(f"{'':14}-> {item.product_name}")
         if item.kind:

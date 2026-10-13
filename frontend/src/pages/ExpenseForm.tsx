@@ -349,7 +349,7 @@ export default function ExpenseForm() {
     setItems((list) => [...list, ...parsed.map((item) => ({
         key: nextKey(),
         name: item.name,
-        amount: toMajorString(item.total, currency),
+        amount: item.total === null ? "" : toMajorString(item.total, currency),
         userIds: everyone,
         quantity: item.quantity ?? undefined,
         unitPrice: item.unit_price ?? undefined,
