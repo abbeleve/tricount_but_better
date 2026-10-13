@@ -23,7 +23,7 @@ Photograph the receipt, and a vision model reads it into editable line items.
   of a box leave out the table around the receipt, and dashed lines across
   split a long one into parts that never overlap. Each part is read as its own page, at full
   size, so small print stays legible. Zoom in to place the lines (buttons,
-  pinch, or Ctrl/⌘ + scroll).
+  pinch or double tap on a phone, Ctrl/⌘ + scroll on a computer).
 - **Spending analytics** — the Spending section in each team shows this week/month/year against the full previous period, a comparison chart, and history grouped by week, month, or year. Weeks start on Monday; totals use purchase dates and include refunds, excluding plans and paybacks.
 - **Planned purchases** — keep a shopping list with optional prices. Finish the
   purchase through the expense form; plans do not affect balances.
