@@ -22,6 +22,7 @@
   Colour still never travels alone -- balances carry a +/- sign, a worded label,
   and, in the balance meter, a position left or right of the centre line.
   Purple identifies spending history; dashed neutral lines show the previous period.
+  Spending by person gives each person their own hue (--chart-person-N).
   Spending increases use red and decreases use green, accompanied by arrows and words.
   Prices borrow that pair: green is the cheaper shop or a saving, red is paying
   more. The text colours are the spending ones; the marks have their own steps,
@@ -68,6 +69,18 @@
 
   --chart-spending: #8b3db8;    /* period spending, distinct from balance direction */
   --chart-bar: #52525b;         /* single-series magnitude bars */
+  /* One hue per person, in a fixed order that clears the palette validator's
+     colour-blind checks in both themes. Never cycled: a ninth person folds
+     into "Others". Three light steps sit under 3:1 on white, so every chart
+     that uses them names each person beside a value and has a table view. */
+  --chart-person-1: #2a78d6;
+  --chart-person-2: #eb6834;
+  --chart-person-3: #1baf7a;
+  --chart-person-4: #eda100;
+  --chart-person-5: #e87ba4;
+  --chart-person-6: #008300;
+  --chart-person-7: #4a3aa7;
+  --chart-person-8: #e34948;
   --price-low-mark: #15803d;    /* cheaper: validator-approved against the dearer mark */
   --price-high-mark: #dc2626;
 
@@ -138,6 +151,14 @@
 
   --chart-spending: #bd7fe3;
   --chart-bar: #a1a1aa;
+  --chart-person-1: #3987e5;
+  --chart-person-2: #d95926;
+  --chart-person-3: #199e70;
+  --chart-person-4: #c98500;
+  --chart-person-5: #d55181;
+  --chart-person-6: #008300;
+  --chart-person-7: #9085e9;
+  --chart-person-8: #e66767;
   --price-low-mark: #059669;
   --price-high-mark: #ef4444;
 

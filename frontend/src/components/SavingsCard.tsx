@@ -10,7 +10,7 @@ import {
 import { periodLabel } from "../lib/spending-format";
 import type { Savings } from "../lib/types";
 import { SpendingComparisonChart } from "./SpendingCharts";
-import { PeriodPicker } from "./SpendingTab";
+import { PeriodPicker } from "./Segmented";
 import { Button, Card, Skeleton, cx } from "./ui";
 
 /**

@@ -1,4 +1,4 @@
-import type { DailySpending } from "./types";
+import type { DailySpending, PersonSpending } from "./types";
 
 export type SpendingPeriod = "week" | "month" | "year";
 export const SPENDING_PERIODS: SpendingPeriod[] = ["week", "month", "year"];
@@ -82,4 +82,43 @@ export function chartDomain(values: (number | null)[]): { min: number; max: numb
   const min = Math.min(0, ...known);
   const max = Math.max(0, ...known);
   return { min: min < 0 ? min * 1.15 : 0, max: max > 0 ? max * 1.15 : min === 0 ? 1 : 0 };
+}
+
+/** Who paid at the till, or whose share it was. Across everyone, either adds up to the team's spending. */
+export type SpendingMeasure = "paid" | "share";
+export const SPENDING_MEASURES: SpendingMeasure[] = ["share", "paid"];
+
+/** Periods to show up to `last`: back to the first purchase, so a young team's
+ * chart is not mostly empty, but at least two, so every line has two ends. */
+export function historyLength(earliest: string, last: string, period: SpendingPeriod, max = 12): number {
+  const first = periodStart(earliest, period);
+  let start = periodStart(last, period);
+  let count = 1;
+  while (count < max && start > first) {
+    start = shiftPeriod(start, period, -1);
+    count++;
+  }
+  return Math.max(2, count);
+}
+
+export interface SpendingSeries {
+  /** A user id, or "others" for everyone folded together past the last hue. */
+  id: string;
+  name: string;
+  isMember: boolean;
+  days: DailySpending[];
+}
+
+/** One series per person, in the order given, so each keeps its hue. There are
+ * `limit` hues and they are never reused: with more people than that, the
+ * last hue's place goes to everyone from there on, as one "others" series. */
+export function personSeries(people: PersonSpending[], measure: SpendingMeasure, limit = 8): SpendingSeries[] {
+  const series = people.map((person) => ({
+    id: person.user_id, name: person.display_name, isMember: person.is_member, days: person[measure],
+  }));
+  if (series.length <= limit) return series;
+  const rest = series.slice(limit - 1);
+  return [...series.slice(0, limit - 1), {
+    id: "others", name: "", isMember: true, days: rest.flatMap((person) => person.days),
+  }];
 }

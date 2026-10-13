@@ -137,3 +137,80 @@ def test_spending_updates_after_edit_and_delete(client, team, alice):
         == 204
     )
     assert _spending(client, team, alice)["days"] == []
+
+
+def _people(client, team, actor):
+    response = client.get(f"/api/teams/{team}/spending/people", headers=actor.headers)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def _days(person, measure):
+    return {day["date"]: (day["total"], day["expense_count"]) for day in person[measure]}
+
+
+def test_people_spending_splits_who_paid_from_whose_share(client, team, alice, bob, carol):
+    everyone = [{"user_id": alice.id}, {"user_id": bob.id}, {"user_id": carol.id}]
+    _add(client, team, alice, total=300, shares=everyone)
+    _add(client, team, bob, payer_id=bob.id, total=101, shares=[{"user_id": bob.id}])
+    _add(
+        client,
+        team,
+        carol,
+        payer_id=carol.id,
+        spent_at="2026-10-02",
+        split_mode="items",
+        total=None,
+        shares=[],
+        items=[
+            {"name": "A", "total": 201, "shares": [{"user_id": alice.id}, {"user_id": bob.id}]},
+            {"name": "B", "total": 99, "shares": [{"user_id": bob.id}]},
+        ],
+    )
+    _add(client, team, alice, spent_at="2026-10-02", total=-50, title="Refund")
+
+    result = _people(client, team, carol)
+    assert result["currency"] == "RUB"
+    people = result["people"]
+    # Joined order, so a person keeps their colour as the team grows.
+    assert [p["display_name"] for p in people] == ["Alice", "Bob", "Carol"]
+    assert all(p["is_member"] for p in people)
+    a, b, c = people
+    assert _days(a, "paid") == {"2026-10-01": (300, 1), "2026-10-02": (-50, 1)}
+    assert _days(b, "paid") == {"2026-10-01": (101, 1)}
+    assert _days(c, "paid") == {"2026-10-02": (300, 1)}
+    assert _days(a, "share")["2026-10-01"] == (100, 1)
+    assert _days(b, "share")["2026-10-01"] == (201, 2)
+    assert _days(c, "share") == {"2026-10-01": (100, 1)}
+    # Item A splits 101/100 between Alice and Bob; Bob also has all of B.
+    assert {_days(a, "share")["2026-10-02"][0] + 50, _days(b, "share")["2026-10-02"][0] - 99} == {
+        100,
+        101,
+    }
+
+    # Either way of counting adds up to the team's own spending, day by day.
+    team_days = {d["date"]: d["total"] for d in _spending(client, team, alice)["days"]}
+    for measure in ("paid", "share"):
+        summed: dict[str, int] = {}
+        for person in people:
+            for day in person[measure]:
+                summed[day["date"]] = summed.get(day["date"], 0) + day["total"]
+        assert summed == team_days
+
+
+def test_people_spending_keeps_someone_who_left(client, team, alice, bob, carol):
+    _add(client, team, carol, payer_id=carol.id, total=90, shares=[{"user_id": carol.id}])
+    left = client.delete(f"/api/teams/{team}/members/{carol.id}", headers=carol.headers)
+    assert left.status_code == 204, left.text
+
+    people = _people(client, team, bob)["people"]
+    assert [(p["display_name"], p["is_member"]) for p in people] == [
+        ("Alice", True),
+        ("Bob", True),
+        ("Carol", False),
+    ]
+    assert people[0]["paid"] == people[0]["share"] == []
+    assert _days(people[2], "paid") == _days(people[2], "share") == {"2026-10-01": (90, 1)}
+    url = f"/api/teams/{team}/spending/people"
+    assert client.get(url, headers=carol.headers).status_code == 404
+    assert client.get(url).status_code == 401

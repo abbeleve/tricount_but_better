@@ -14,6 +14,22 @@ function bucketLabel(bucket: SpendingBucket, period: SpendingPeriod, language: s
       : bucket.start.slice(8).replace(/^0/, "");
 }
 
+/** The chart's drawing width follows its box, so text in the SVG keeps its size. */
+function useChartWidth() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(800);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const measure = () => setWidth(Math.max(240, element.clientWidth));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, width] as const;
+}
+
 export function SpendingComparisonChart({ current, previous, currency, period, label }: {
   current: SpendingBucket[]; previous: SpendingBucket[]; currency: string; period: SpendingPeriod;
   /** What the chart shows, for its accessible name; spending by default. */
@@ -24,18 +40,8 @@ export function SpendingComparisonChart({ current, previous, currency, period, l
   const id = useId().replace(/:/g, "");
   const initialSelected = Math.max(0, current.filter((b) => b.total !== null).length - 1);
   const [selected, setSelected] = useState(initialSelected);
-  const scroller = useRef<HTMLDivElement>(null);
+  const [scroller, chartWidth] = useChartWidth();
   const count = Math.max(current.length, previous.length);
-  const [chartWidth, setChartWidth] = useState(800);
-  useLayoutEffect(() => {
-    const element = scroller.current;
-    if (!element) return;
-    const measure = () => setChartWidth(Math.max(240, element.clientWidth));
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
   const values = [...current, ...previous].map((b) => b.total);
   const domain = chartDomain(values);
   const min = domain.min;
@@ -100,7 +106,7 @@ export function SpendingComparisonChart({ current, previous, currency, period, l
                   width={(right - left) / (count - 1)} height={bottom - top} fill="transparent"
                   role="button" tabIndex={0} aria-pressed={selected === i}
                   aria-label={`${bucketLabel(bucket, period, language)}: ${t("Selected period")} ${value(current[i])}; ${t("Previous period")} ${value(previous[i])}`}
-                  className="cursor-pointer" onMouseEnter={() => setSelected(i)} onFocus={() => setSelected(i)} onClick={() => setSelected(i)}
+                  className="cursor-pointer [&:focus:not(:focus-visible)]:outline-none" onMouseEnter={() => setSelected(i)} onFocus={() => setSelected(i)} onClick={() => setSelected(i)}
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelected(i); } }} />
               </g>
             );
@@ -174,6 +180,96 @@ export function SpendingHistoryChart({ buckets, period, currency, onSelect }: {
             </button>;
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+export interface PersonLine {
+  id: string;
+  name: string;
+  color: string;
+  buckets: SpendingBucket[];
+}
+
+function historyTick(bucket: SpendingBucket, period: SpendingPeriod, language: string) {
+  return period === "year" ? bucket.start.slice(0, 4)
+    : period === "month" ? spendingDate(bucket.start, language, { day: undefined, month: "short" })
+      : spendingDate(bucket.start, language);
+}
+
+/**
+ * One line per person over consecutive periods, on one shared scale.
+ *
+ * Identity is the line's hue, and never only that: the legend names every
+ * line, and the caller lists each person's amount for the chosen period.
+ * Choosing a column moves the crosshair and tells the caller which period.
+ */
+export function PeopleSpendingChart({ lines, period, currency, selected, onSelect, label }: {
+  lines: PersonLine[]; period: SpendingPeriod; currency: string;
+  selected: number; onSelect: (index: number) => void; label: string;
+}) {
+  const { t, language } = useI18n();
+  const [box, chartWidth] = useChartWidth();
+  const columns = lines[0]?.buckets ?? [];
+  const count = columns.length;
+  const values = lines.flatMap((line) => line.buckets.map((b) => b.total));
+  const domain = chartDomain(values);
+  const min = domain.min;
+  const max = values.every((value) => value === null || value === 0) ? 10 ** exponentFor(currency) : domain.max;
+  const left = 76, right = chartWidth - 16, top = 14, bottom = 196;
+  const gap = (right - left) / Math.max(1, count - 1);
+  const x = (i: number) => left + i * gap;
+  const y = (value: number) => bottom - (value - min) / (max - min) * (bottom - top);
+  const ticks = Array.from({ length: 4 }, (_, i) => min + (max - min) * i / 3);
+  // Label from the newest period back, so the current one always has its name.
+  const step = Math.max(1, Math.ceil((period === "week" ? 50 : 36) / gap));
+  const labelled = (i: number) => (count - 1 - i) % step === 0;
+  const firstLabelled = columns.findIndex((_, i) => labelled(i));
+  const amount = (bucket: SpendingBucket | undefined) => formatMoney(bucket?.total ?? 0, currency);
+
+  return (
+    <div>
+      {lines.length > 1 && <ul className="mb-3 flex flex-wrap gap-x-4 gap-y-1.5 text-[12px] text-muted" aria-label={t("Legend")}>
+        {lines.map((line) => <li key={line.id} className="inline-flex min-w-0 items-center gap-2">
+          <span className="h-0.5 w-4 shrink-0 rounded-full" style={{ background: line.color }} />
+          <span className="truncate">{line.name}</span>
+        </li>)}
+      </ul>}
+      <div ref={box}>
+        <svg viewBox={`0 0 ${chartWidth} 238`} className="block w-full min-w-[240px]" role="group" aria-label={label}>
+          <title>{label}</title>
+          {ticks.map((tick, i) => (
+            <g key={i}>
+              <line x1={left} x2={right} y1={y(tick)} y2={y(tick)} stroke="var(--border)" />
+              <text x={left - 12} y={y(tick) + 4} textAnchor="end" fill="var(--text-muted)" fontSize="11">{compactMoney(tick, currency, language)}</text>
+            </g>
+          ))}
+          {min < 0 && <line x1={left} x2={right} y1={y(0)} y2={y(0)} stroke="var(--border-strong)" />}
+          {count > 0 && <line x1={x(selected)} x2={x(selected)} y1={top} y2={bottom} stroke="var(--border-strong)" strokeDasharray="3 4" />}
+          {lines.map((line) => <path key={line.id} fill="none" stroke={line.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"
+            d={smoothChartPath(line.buckets.flatMap((b, i) => b.total === null ? [] : [{ x: x(i), y: y(b.total) }]))} />)}
+          {lines.map((line) => {
+            const value = line.buckets[selected]?.total;
+            return value === null || value === undefined ? null
+              : <circle key={line.id} cx={x(selected)} cy={y(value)} r="4" fill={line.color} stroke="var(--surface)" strokeWidth="2" />;
+          })}
+          {columns.map((bucket, i) => {
+            const year = bucket.start.slice(0, 4);
+            const newYear = period !== "year" && (i === firstLabelled || year !== columns[i - step]?.start.slice(0, 4));
+            return (
+              <g key={bucket.start}>
+                {labelled(i) && <text x={x(i)} y="218" textAnchor="middle" fill={i === selected ? "var(--text)" : "var(--text-muted)"} fontSize="11">{historyTick(bucket, period, language)}</text>}
+                {labelled(i) && newYear && <text x={x(i)} y="232" textAnchor="middle" fill="var(--text-subtle)" fontSize="10">{year}</text>}
+                <rect x={Math.max(left - 8, x(i) - gap / 2)} y={top} width={gap} height={bottom - top} fill="transparent"
+                  role="button" tabIndex={0} aria-pressed={selected === i}
+                  aria-label={`${periodLabel(bucket.start, bucket.end, period, language)}: ${lines.map((line) => `${line.name} ${amount(line.buckets[i])}`).join("; ")}`}
+                  className="cursor-pointer [&:focus:not(:focus-visible)]:outline-none" onMouseEnter={() => onSelect(i)} onFocus={() => onSelect(i)} onClick={() => onSelect(i)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(i); } }} />
+              </g>
+            );
+          })}
+        </svg>
       </div>
     </div>
   );
