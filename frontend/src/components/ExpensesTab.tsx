@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Card, Chip, EmptyState, ErrorState, Input, Money, ROW_PRESS, Skeleton, cx } from "./ui";
 import { useCategories, useExpenses, usePlans, useShops } from "../hooks/queries";
 import { useAuth } from "../hooks/useAuth";
+import { draftPath, listDrafts, removeDraft, type ListedDraft } from "../lib/drafts";
 import { useI18n } from "../lib/i18n";
 import type { Expense, TeamDetail } from "../lib/types";
 
@@ -12,6 +13,70 @@ function formatDate(iso: string, language: string): string {
     month: "short",
     year: "numeric",
   });
+}
+
+/**
+ * Expenses started on this device but not added yet -- most often a scanned
+ * receipt left halfway through checking. Tapping one carries on with it.
+ */
+function Drafts({ team }: { team: TeamDetail }) {
+  const { t, language } = useI18n();
+  const { user } = useAuth();
+  const [drafts, setDrafts] = useState<ListedDraft[]>(() => (user ? listDrafts(user.id, team.id) : []));
+  if (drafts.length === 0) return null;
+
+  const when = (iso: string) =>
+    new Date(iso).toLocaleString(language === "ru" ? "ru-RU" : "en-US", {
+      day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+    });
+  const discard = (draft: ListedDraft) => {
+    removeDraft(draft.key);
+    setDrafts((list) => list.filter((d) => d.key !== draft.key));
+  };
+
+  return (
+    <section>
+      <div className="mb-2 px-1">
+        <h3 className="text-sm font-medium text-body">{t("Drafts")}</h3>
+        <p className="text-[12px] text-muted">{t("Not added yet, so not in balances. Kept on this device only.")}</p>
+      </div>
+      <Card className="divide-y divide-line overflow-hidden">
+        {drafts.map((draft) => (
+          <div key={draft.key} className="flex items-stretch">
+            <Link
+              to={draftPath(team.id, draft.slot)}
+              className={cx("block min-w-0 flex-1 px-4 py-3.5 hover:bg-surface-2", ROW_PRESS)}
+            >
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="min-w-0 truncate font-medium text-body">
+                  {draft.summary.title || t("Untitled expense")}
+                </span>
+                <Money minor={draft.summary.total} currency={draft.summary.currency} className="shrink-0 font-medium" />
+              </div>
+              <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted">
+                <Chip>{t("draft")}</Chip>
+                <span>
+                  {t(draft.summary.lines === 1 ? "{count} line" : "{count} lines", { count: draft.summary.lines })}
+                  {" · "}
+                  {when(draft.savedAt)}
+                </span>
+              </p>
+            </Link>
+            <button
+              type="button"
+              onClick={() => discard(draft)}
+              aria-label={t("Delete draft")}
+              className="grid w-12 shrink-0 place-items-center text-subtle transition-colors hover:bg-surface-2 hover:text-body active:bg-surface-2"
+            >
+              <svg viewBox="0 0 16 16" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
+              </svg>
+            </button>
+          </div>
+        ))}
+      </Card>
+    </section>
+  );
 }
 
 /** Groups by day so a busy week reads as a timeline rather than a flat list. */
@@ -45,6 +110,7 @@ export function ExpensesTab({ team }: { team: TeamDetail }) {
 
   return (
     <div className="flex flex-col gap-4">
+      <Drafts team={team} />
       <section>
         <div className="mb-2 flex items-center justify-between gap-3 px-1">
           <div>
