@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppShell, PageTitle } from "../components/Layout";
 import { ReceiptScanner } from "../components/ReceiptScanner";
@@ -39,6 +39,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useScanFlow } from "../hooks/useScanFlow";
 import { ApiError, api } from "../lib/api";
 import { todayLocal } from "../lib/dates";
+import { draftKey, readDraft, removeDraft, writeDraft, type DraftSlot } from "../lib/drafts";
 import { previewEqualSplit, toMajorString, toMinor } from "../lib/money";
 import { useI18n } from "../lib/i18n";
 import { basketElsewhere, initialAnswers, paidPerUnit, receiptVsUsual } from "../lib/prices";
@@ -68,6 +69,19 @@ interface ItemDraft {
 
 let counter = 0;
 const nextKey = () => `draft-${counter++}`;
+
+/** The form as kept on the device until the expense is added. */
+interface FormDraft {
+  title: string;
+  note: string;
+  payerId: string;
+  spentAt: string;
+  spentAtTouched: boolean;
+  categoryId: string;
+  shopId: string;
+  shopNotice: { match: ShopMatch; merchant: string | null } | null;
+  items: Omit<ItemDraft, "key">[];
+}
 
 /* ------------------------------------------------------ participant picker */
 
@@ -124,7 +138,7 @@ export default function ExpenseForm() {
   const planId = expenseId ? null : params.get("planId");
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const team = useTeam(teamId);
   const config = useServerConfig();
   const existing = useExpense(teamId, expenseId);
@@ -157,10 +171,45 @@ export default function ExpenseForm() {
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const spentAtTouched = useRef(false);
 
+  /* A new expense, or a plan being bought, is kept as a draft on this device
+     until it is added: leave halfway through checking a scanned receipt, and
+     it is still here. Edits to a saved expense are not. */
+  const slot: DraftSlot | null = editing ? null : planId ? { kind: "plan", planId } : { kind: "new" };
+  const draftId = slot && user ? draftKey(user.id, teamId, slot) : null;
+  /** The draft this form reopened, if any. */
+  const [draft] = useState(() => (draftId ? readDraft<FormDraft>(draftId) : null));
+  /** The form as it opened: kept only once it differs from this. */
+  const pristine = useRef<string | null>(null);
+  /** Added or thrown away: nothing more to keep. */
+  const finished = useRef(false);
+
+  function restore(saved: FormDraft, people: Member[], me: string) {
+    const ids = new Set(people.map((m) => m.user_id));
+    setTitle(saved.title);
+    setNote(saved.note);
+    setPayerId(ids.has(saved.payerId) ? saved.payerId : me);
+    setSpentAt(saved.spentAt);
+    spentAtTouched.current = saved.spentAtTouched;
+    setCategoryId(saved.categoryId);
+    setShopId(saved.shopId);
+    setShopNotice(saved.shopNotice);
+    // Whoever has left the team since can no longer be on a line.
+    setItems(saved.items.map((item) => {
+      const userIds = item.userIds.filter((id) => ids.has(id));
+      return {
+        ...item,
+        key: nextKey(),
+        userIds,
+        weights: userIds.length === item.userIds.length ? item.weights : undefined,
+      };
+    }));
+  }
+
   /* Defaults for a new expense: me paying, everyone splitting. */
   if (!editing && !loaded && team.data && user) {
     setLoaded(true);
-    setPayerId(user.id);
+    if (draft) restore(draft.data, team.data.members, user.id);
+    else setPayerId(user.id);
   }
 
   /* Populate from an existing expense exactly once. */
@@ -198,7 +247,8 @@ export default function ExpenseForm() {
         })));
   }
 
-  if (planId && !planLoaded && planned.data && team.data) {
+  // A draft of this purchase already holds the plan's lines, as last left.
+  if (planId && !planLoaded && planned.data && team.data && !draft) {
     setPlanLoaded(true);
     setTitle(planned.data.title);
     setNote(planned.data.note);
@@ -215,6 +265,27 @@ export default function ExpenseForm() {
     () => items.reduce((sum, item) => sum + (toMinor(item.amount, currency) ?? 0), 0),
     [items, currency],
   );
+
+  const formReady = loaded && (!planId || planLoaded || Boolean(draft));
+  useEffect(() => {
+    if (!draftId || !formReady || finished.current) return;
+    const data: FormDraft = {
+      title, note, payerId, spentAt, spentAtTouched: spentAtTouched.current,
+      categoryId, shopId, shopNotice,
+      items: items.map(({ key: _key, ...item }) => item),
+    };
+    const snapshot = JSON.stringify(data);
+    // A reopened draft stays a draft; a fresh form becomes one once touched.
+    pristine.current ??= draft ? "" : snapshot;
+    if (snapshot === pristine.current || (!title.trim() && items.length === 0)) removeDraft(draftId);
+    else writeDraft(draftId, data, { title: title.trim(), total: itemsTotal, lines: items.length, currency });
+  }, [draftId, formReady, draft, title, note, payerId, spentAt, categoryId, shopId, shopNotice, items, itemsTotal, currency]);
+
+  function deleteDraft() {
+    finished.current = true;
+    if (draftId) removeDraft(draftId);
+    navigate(back.to);
+  }
 
   /* What the linked goods cost elsewhere, for the comparisons under each line. */
   const productIds = useMemo(
@@ -285,6 +356,8 @@ export default function ExpenseForm() {
         : api<Expense>(`/teams/${teamId}/expenses`, { body });
     },
     onSuccess: (expense) => {
+      finished.current = true;
+      if (draftId) removeDraft(draftId);
       invalidate();
       if (expense.price_changes.length > 0) {
         setReview(initialAnswers(expense.price_changes));
@@ -485,6 +558,21 @@ export default function ExpenseForm() {
     <AppShell back={back} bar={bar}>
       <PageTitle title={t(editing ? "Edit expense" : planId ? "Complete purchase" : "Add an expense")}
         subtitle={planId ? t("Fill in the prices and choose who shares each item.") : undefined} />
+
+      {draft && (
+        <Card className="mb-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3">
+          <p className="min-w-0 flex-1 text-[13px] text-muted">
+            {t("Draft from {time}, not added yet. It waits on this device until you add it.", {
+              time: new Date(draft.savedAt).toLocaleString(language === "ru" ? "ru-RU" : "en-US", {
+                day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+              }),
+            })}
+          </p>
+          <Button type="button" size="sm" variant="ghost" className="-mr-2" onClick={deleteDraft}>
+            {t("Delete draft")}
+          </Button>
+        </Card>
+      )}
 
       {/* Keep the photo action visible even after the user has typed lines. */}
       <ScanPanel

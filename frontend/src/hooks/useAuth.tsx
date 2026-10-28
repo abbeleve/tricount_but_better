@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { api, onLogout, signOut, tokenStore } from "../lib/api";
+import { removeUserDrafts } from "../lib/drafts";
 import { releasePush } from "../lib/push";
 import type { Tokens, User } from "../lib/types";
 
@@ -71,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout: () => {
         // First, while the tokens still authorise it: this device stops getting the account's news.
         releasePush();
+        if (user) removeUserDrafts(user.id);
         signOut();
         setUser(null);
       },

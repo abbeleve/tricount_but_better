@@ -658,6 +658,14 @@ const russian: Record<string, string> = {
   "Ready to check": "Готово — проверьте",
   "Stop reading": "Остановить чтение",
   "Dismiss": "Убрать",
+  "Draft from {time}, not added yet. It waits on this device until you add it.": "Черновик от {time}, ещё не добавлен. Он хранится на этом устройстве, пока вы его не добавите.",
+  "Delete draft": "Удалить черновик",
+  "Drafts": "Черновики",
+  "Not added yet, so not in balances. Kept on this device only.": "Ещё не добавлены, поэтому не влияют на балансы. Хранятся только на этом устройстве.",
+  "Untitled expense": "Расход без названия",
+  "draft": "черновик",
+  "{count} line": "Строк: {count}",
+  "{count} lines": "Строк: {count}",
 };
 
 function interpolate(text: string, values?: Record<string, string | number>): string {
