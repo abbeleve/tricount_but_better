@@ -245,6 +245,21 @@ export interface ReceiptScan {
   notes: string | null;
 }
 
+/** A scan read in the background; it waits for whoever started it to pick it up. */
+export interface ScanJob {
+  id: string;
+  team_id: string;
+  kind: "receipt" | "prices";
+  status: "reading" | "done" | "failed";
+  /** Why it failed; safe to show. */
+  error: string | null;
+  created_at: string;
+}
+
+export interface ScanJobDetail<T = ReceiptScan | PriceScan> extends ScanJob {
+  result: T | null;
+}
+
 export interface ServerConfig {
   receipt_scanning: boolean;
   default_currency: string;

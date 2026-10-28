@@ -18,6 +18,8 @@ import type {
   ProductList,
   ProductSort,
   Savings,
+  ScanJob,
+  ScanJobDetail,
   ServerConfig,
   Settlement,
   Shop,
@@ -47,6 +49,8 @@ export const keys = {
   products: (id: string) => ["team", id, "products"] as const,
   product: (id: string, pid: string) => ["team", id, "products", pid] as const,
   notifications: ["notifications"] as const,
+  scans: ["scans"] as const,
+  scan: (id: string) => ["scans", id] as const,
 };
 
 export const useServerConfig = () =>
@@ -56,8 +60,8 @@ export const useServerConfig = () =>
     staleTime: Infinity,
   });
 
-export const useTeams = () =>
-  useQuery({ queryKey: keys.teams, queryFn: () => api<TeamSummary[]>("/teams") });
+export const useTeams = (enabled = true) =>
+  useQuery({ queryKey: keys.teams, queryFn: () => api<TeamSummary[]>("/teams"), enabled });
 
 export const useTeam = (teamId: string) =>
   useQuery({ queryKey: keys.team(teamId), queryFn: () => api<TeamDetail>(`/teams/${teamId}`) });
@@ -200,6 +204,32 @@ export const useNotifications = (enabled = true) =>
     queryFn: ({ signal }) => api<NotificationList>("/notifications", { signal }),
     enabled,
     refetchInterval: 60_000,
+  });
+
+/** Scans being read in the background, polled while any still is. */
+export const useScanJobs = (enabled = true) =>
+  useQuery({
+    queryKey: keys.scans,
+    queryFn: ({ signal }) => api<ScanJob[]>("/scans", { signal }),
+    enabled,
+    refetchInterval: (query) =>
+      query.state.data?.some((job) => job.status === "reading") ? 3_000 : false,
+  });
+
+/** One scan and, once read, what it read; polled until it stops reading. */
+export const useScanJob = <T>(id: string | null) =>
+  useQuery({
+    queryKey: keys.scan(id ?? ""),
+    queryFn: ({ signal }) => api<ScanJobDetail<T>>(`/scans/${id}`, { signal }),
+    enabled: Boolean(id),
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+    // Until it has stopped reading; a lost connection is asked again.
+    refetchInterval: (query) =>
+      query.state.data && query.state.data.status !== "reading" ? false : 1_500,
+    // A phone that slept stops the timer; ask again the moment it is back.
+    refetchIntervalInBackground: false,
   });
 
 /** Marks these as read on the server, and in the cached list straight away. */

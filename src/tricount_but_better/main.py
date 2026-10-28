@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,13 +20,22 @@ from .routers import (
     price_scans,
     products,
     receipts,
+    scans,
     shops,
     spending,
     teams,
 )
+from .scan_jobs import jobs as scan_jobs
 from .webpush import vapid_key
 
 logging.basicConfig(level=logging.INFO)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    yield
+    # Scans still being read die with the process; let them go quietly.
+    await scan_jobs.close()
 
 
 def create_app() -> FastAPI:
@@ -33,6 +44,7 @@ def create_app() -> FastAPI:
         title=settings.app_name,
         version="0.1.0",
         description="Shared expenses, split per item, with AI receipt reading.",
+        lifespan=lifespan,
     )
 
     app.add_middleware(
@@ -55,6 +67,7 @@ def create_app() -> FastAPI:
         shops.router,
         products.router,
         price_scans.router,
+        scans.router,
         notifications.router,
     ):
         app.include_router(router, prefix="/api")

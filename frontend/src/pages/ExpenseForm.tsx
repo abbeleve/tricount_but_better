@@ -496,7 +496,9 @@ export default function ExpenseForm() {
           : "Upload, drop, or paste receipt photos. On a phone, you can also take a photo.")}
       >
         <ReceiptScanner
+          key={scan.resumeId ?? undefined}
           teamId={teamId}
+          jobId={scan.resumeId}
           appendToExisting={items.length > 0}
           onParsed={(receipt) => applyParsed(receipt, receipt.items)}
           onCancel={scan.close}

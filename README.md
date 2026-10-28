@@ -16,8 +16,13 @@ Photograph the receipt, and a vision model reads it into editable line items.
   clears everything. Mark a payment as made and it settles.
 - **Line-by-line expenses** — enter each item and its price, or read the lines from a photographed receipt. Choose who shares each line. Existing total-split expenses open as a single editable line.
 - **Receipt scanning** — one or more photos go to Polza, which returns
-  structured line items. Photos and scan results are not stored by the app;
-  only the lines you save as an expense persist. Everyone is on every line by
+  structured line items. Reading happens in the background: once the photos
+  are sent, keep using the app — fill in the rest of the form, or go elsewhere
+  entirely — and the top bar shows the scan reading, then ready; tap it to
+  bring the lines back into the form it came from. Cancel stops the read.
+  Photos and scan results are not stored by the app: the server keeps them in
+  memory only while reading, and a result nobody opens is dropped after half an
+  hour. Only the lines you save as an expense persist. Everyone is on every line by
   default; tap a name off a line and they stop paying towards it.
   Before reading, tap a photo to trim it and cut it into parts: the four edges
   of a box leave out the table around the receipt, and dashed lines across
@@ -207,6 +212,7 @@ src/tricount_but_better/
 ├── webpush.py      Web Push: VAPID signing and aes128gcm encryption (RFC 8291/8292)
 ├── models.py       SQLAlchemy schema
 ├── images.py       in-memory validation, EXIF stripping, re-encoding
+├── scan_jobs.py    background scans: read in memory, picked up by whoever started them
 ├── routers/        auth, teams, invites, categories, expenses, plans, receipts, shops,
 │                   products (goods and prices), price_scans (screenshots), notifications
 └── vlm/            receipt and price-list reading — schemas, prompts, Polza provider
