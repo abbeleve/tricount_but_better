@@ -1,11 +1,13 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
+import { useLocation } from "react-router-dom";
 import { Button, Card, FormError, Skeleton, cx } from "./ui";
 import { PhotoCutter } from "./PhotoCutter";
-import { useServerConfig } from "../hooks/queries";
+import { keys, useScanJob, useServerConfig } from "../hooks/queries";
 import { ApiError, api } from "../lib/api";
 import { useI18n } from "../lib/i18n";
-import type { ReceiptScan } from "../lib/types";
+import { claimScan, forgetOrigin, rememberOrigin } from "../lib/scanJobs";
+import type { ReceiptScan, ScanJob } from "../lib/types";
 
 /** What the scanner says, for a scan that is not a receipt. */
 export interface ScannerCopy {
@@ -18,8 +20,10 @@ export interface ScannerCopy {
 interface Props<T> {
   teamId: string;
   appendToExisting?: boolean;
-  /** Where the photos go; the receipt reader unless told otherwise. */
+  /** Where the photos go to start a scan; the receipt reader unless told otherwise. */
   path?: string;
+  /** A scan already started, to follow instead of taking photos. */
+  jobId?: string | null;
   /** Sent along with the images. */
   body?: Record<string, unknown>;
   copy?: ScannerCopy;
@@ -41,12 +45,22 @@ const TILE = cx(
  * Photos are collected first and read on request. A phone camera returns one
  * shot per trip, so a long receipt needs several trips before anything is sent,
  * and a look at the thumbnails catches a blurred photo before the slow part.
+ *
+ * Reading runs on the server as a background scan. The scanner follows it
+ * while it is on screen; leave the page and the scan carries on, waiting in
+ * the header to be opened again. Cancel stops it.
  */
 export function ReceiptScanner<T = ReceiptScan>({
-  teamId, appendToExisting = false, path, body, copy, onParsed, onCancel,
+  teamId, appendToExisting = false, path, body, copy, jobId: resumeId = null, onParsed, onCancel,
 }: Props<T>) {
   const { t } = useI18n();
   const config = useServerConfig();
+  const client = useQueryClient();
+  const location = useLocation();
+  const [jobId, setJobId] = useState<string | null>(resumeId);
+  const [jobError, setJobError] = useState<string | null>(null);
+  const settled = useRef(new Set<string>());
+  const job = useScanJob<T>(jobId);
   const cameraRef = useRef<HTMLInputElement>(null);
   const pickerRef = useRef<HTMLInputElement>(null);
   const pasteRef = useRef<HTMLTextAreaElement>(null);
@@ -67,7 +81,10 @@ export function ReceiptScanner<T = ReceiptScan>({
   const available = config.data?.receipt_scanning !== false;
 
   const upload = useMutation({
-    onMutate: () => { scanLocked.current = true; },
+    onMutate: () => {
+      scanLocked.current = true;
+      setJobError(null);
+    },
     mutationFn: async (files: File[]) => {
       // Data URLs keep the transfer in memory; multipart UploadFile can spill
       // to a temporary file for large phone photos.
@@ -79,11 +96,51 @@ export function ReceiptScanner<T = ReceiptScan>({
         reader.onerror = () => reject(new Error("Could not read this photo."));
         reader.readAsDataURL(file);
       })));
-      return api<T>(path ?? `/teams/${teamId}/receipts`, { body: { ...body, images } });
+      return api<ScanJob>(path ?? `/teams/${teamId}/receipts/jobs`, { body: { ...body, images } });
     },
-    onSuccess: (result) => onParsed(result),
+    // Runs even if the page was left while the photos went up, so the header
+    // can still bring the scan back here.
+    onSuccess: (started) => {
+      rememberOrigin(started.id, location.pathname + location.search);
+      void client.invalidateQueries({ queryKey: keys.scans });
+      if (mounted.current) setJobId(started.id);
+    },
     onSettled: () => { scanLocked.current = false; },
   });
+
+  /** Done with a scan: the server can let go of it. */
+  const discard = useCallback((id: string) => {
+    settled.current.add(id);
+    forgetOrigin(id);
+    void api(`/scans/${id}`, { method: "DELETE" })
+      .catch(() => { /* gone already, or expires by itself */ })
+      .finally(() => client.invalidateQueries({ queryKey: keys.scans }));
+  }, [client]);
+
+  // Shown here, so not in the header.
+  useEffect(() => (jobId ? claimScan(jobId) : undefined), [jobId]);
+
+  // The scan stopped reading: what it read goes to the page, a failure is shown.
+  useEffect(() => {
+    if (!jobId || settled.current.has(jobId)) return;
+    if (job.error instanceof ApiError && job.error.status === 404) {
+      settled.current.add(jobId);
+      setJobId(null);
+      setJobError("This scan is no longer available. Add the photos again.");
+      return;
+    }
+    const data = job.data;
+    if (!data || data.status === "reading") return;
+    discard(jobId);
+    setJobId(null);
+    if (data.status === "done" && data.result) onParsed(data.result);
+    else setJobError(data.error ?? "Could not read these images.");
+  }, [jobId, job.data, job.error, discard, onParsed]);
+
+  function cancel() {
+    if (jobId) discard(jobId);
+    onCancel();
+  }
 
   // Object URLs pin the image in memory until revoked.
   useEffect(() => {
@@ -211,8 +268,8 @@ export function ReceiptScanner<T = ReceiptScan>({
     (coarse ? cameraRef : pickerRef).current?.click();
   }
 
-  const working = upload.isPending;
-  const failed = upload.isError;
+  const working = upload.isPending || jobId !== null;
+  const failed = upload.isError || jobError !== null;
   const editingShot = working ? undefined : shots.find((shot) => shot.url === editing);
 
   return (
@@ -238,7 +295,7 @@ export function ReceiptScanner<T = ReceiptScan>({
     <Card className={cx("p-4 sm:p-5 transition-shadow", dragging && "ring-2 ring-ink bg-surface-2")}>
       <div className="mb-1 flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-body">{copy?.title ?? t("Scan a receipt")}</h2>
-        <Button size="sm" variant="ghost" className="-mr-2" onClick={onCancel}>
+        <Button size="sm" variant="ghost" className="-mr-2" onClick={cancel}>
           {t("Cancel")}
         </Button>
       </div>
@@ -253,15 +310,7 @@ export function ReceiptScanner<T = ReceiptScan>({
         </p>
       )}
 
-      <FormError
-        message={
-          upload.error instanceof ApiError
-            ? t(upload.error.message)
-            : upload.error instanceof Error
-              ? t(upload.error.message)
-              : null
-        }
-      />
+      <FormError message={upload.error instanceof Error ? upload.error.message : jobError} />
 
       <FormError message={inputError} />
 
@@ -428,6 +477,11 @@ export function ReceiptScanner<T = ReceiptScan>({
           <p className="text-sm text-muted">
             {copy?.reading ?? t("Reading the receipt…")}
           </p>
+          {jobId && (
+            <p className="text-[13px] text-muted">
+              {t("You can leave this page meanwhile: reading goes on, and the top bar shows when it is done.")}
+            </p>
+          )}
           {/* The skeleton is shaped like the line list it will become. */}
           {[0, 1, 2, 3].map((i) => (
             <div key={i} className="flex items-center justify-between gap-4">

@@ -175,9 +175,11 @@ export default function PriceImport() {
             : "A shop's app or website, a leaflet, or price tags. Upload, drop or paste; on a phone, take a photo.")}
         >
           <ReceiptScanner<PriceScan>
+            key={scan.resumeId ?? undefined}
             teamId={teamId}
+            jobId={scan.resumeId}
             appendToExisting={rows.length > 0}
-            path={`/teams/${teamId}/prices/scan`}
+            path={`/teams/${teamId}/prices/scan/jobs`}
             body={{ today: todayLocal() }}
             copy={copy}
             onParsed={applyScan}

@@ -6,6 +6,7 @@ import base64
 import binascii
 import re
 import uuid
+from collections.abc import Awaitable, Callable
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
@@ -22,11 +23,21 @@ from ..catalog import (
     products_by_levels,
 )
 from ..config import get_settings
+from ..db import SessionLocal
 from ..deps import DbSession, Membership, TeamDep
 from ..images import ImageError, normalise_image
-from ..models import Expense, ExpenseItem, Product, Shop, Team
+from ..models import Expense, ExpenseItem, Product, Shop, Team, TeamMember
 from ..money import MoneyError, to_minor
-from ..schemas import ParsedItemOut, ProductLevels, ProductMatch, ReceiptScanOut, ShopMatchOut
+from ..scan_jobs import ScanJob, ScanKind, TooManyScans
+from ..scan_jobs import jobs as scan_jobs
+from ..schemas import (
+    ParsedItemOut,
+    ProductLevels,
+    ProductMatch,
+    ReceiptScanOut,
+    ScanJobOut,
+    ShopMatchOut,
+)
 from ..vlm import KnownProduct, KnownShop, ScanHints, VlmError, VlmUnavailable, get_parser
 from ..vlm.schema import ParsedLevels, ParsedReceipt
 
@@ -134,6 +145,17 @@ class ScanCatalog:
         return matches
 
 
+def job_out(job: ScanJob) -> ScanJobOut:
+    return ScanJobOut(
+        id=job.id,
+        team_id=job.team_id,
+        kind=job.kind,
+        status=job.status,
+        error=job.error,
+        created_at=job.created_at,
+    )
+
+
 def parsed_levels(item: ParsedLevels) -> Levels | None:
     return levels_from(
         item.kind, item.variety, item.brand, item.size_amount, item.size_unit, item.by_weight
@@ -235,6 +257,42 @@ def _to_out(parsed: ParsedReceipt, currency: str, catalog: ScanCatalog) -> Recei
     )
 
 
+async def read_receipt(session: Session, team: Team, images: list[bytes]) -> ReceiptScanOut:
+    """Read receipt photos into lines matched to the team's shops and goods.
+
+    Raises VlmError when nothing usable comes back.
+    """
+    settings = get_settings()
+    catalog = ScanCatalog(session, team, settings.vlm_known_products)
+    # End the read transaction before the slow part: a scan can take minutes,
+    # and an open SQLite snapshot that long holds back the WAL checkpoint.
+    session.commit()
+    result = await get_parser(settings).parse(images, catalog.hints)
+    return _to_out(result.receipt, result.receipt.currency or team.currency, catalog)
+
+
+def start_scan(
+    membership: TeamMember,
+    kind: ScanKind,
+    read: Callable[[Session, Team], Awaitable[BaseModel]],
+) -> ScanJobOut:
+    """Hand a scan to a background job; the photos are already checked."""
+
+    async def work() -> BaseModel:
+        # The request's session is gone by the time the model answers.
+        with SessionLocal() as session:
+            team = session.get(Team, membership.team_id)
+            if team is None:
+                raise VlmError("this team no longer exists")
+            return await read(session, team)
+
+    try:
+        job = scan_jobs.start(membership.user_id, membership.team_id, kind, work)
+    except TooManyScans as exc:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, str(exc)) from exc
+    return job_out(job)
+
+
 @router.post("", response_model=ReceiptScanOut)
 async def scan_receipt(
     payload: ReceiptScanIn,
@@ -242,16 +300,20 @@ async def scan_receipt(
     team: TeamDep,
     session: DbSession,
 ) -> ReceiptScanOut:
-    settings = get_settings()
+    """Read a receipt within the request. The app starts a job instead; see below."""
     images = decode_images(payload.images)
-    catalog = ScanCatalog(session, team, settings.vlm_known_products)
-    # End the read transaction before the slow part: a scan can take minutes,
-    # and an open SQLite snapshot that long holds back the WAL checkpoint.
-    session.commit()
     try:
-        result = await get_parser(settings).parse(images, catalog.hints)
-        return _to_out(result.receipt, result.receipt.currency or team.currency, catalog)
+        return await read_receipt(session, team, images)
     except VlmUnavailable as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
     except VlmError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+
+
+@router.post("/jobs", response_model=ScanJobOut, status_code=status.HTTP_202_ACCEPTED)
+async def start_receipt_scan(payload: ReceiptScanIn, membership: Membership) -> ScanJobOut:
+    """Read a receipt in the background; ``/api/scans/{id}`` says when it is done."""
+    images = decode_images(payload.images)
+    return start_scan(
+        membership, "receipt", lambda session, team: read_receipt(session, team, images)
+    )

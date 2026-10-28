@@ -831,3 +831,20 @@ class ReceiptScanOut(BaseModel):
     parsed_total: int | None = None
     items_total: int
     notes: str | None = None
+
+
+class ScanJobOut(BaseModel):
+    """A scan being read in the background, or read and waiting to be picked up."""
+
+    id: uuid.UUID
+    team_id: uuid.UUID
+    kind: Literal["receipt", "prices"]
+    status: Literal["reading", "done", "failed"]
+    # Why it failed; safe to show.
+    error: str | None = None
+    created_at: datetime
+
+
+class ScanJobDetailOut(ScanJobOut):
+    # What a finished scan read: a receipt's lines or a shop's prices, by kind.
+    result: ReceiptScanOut | PriceScanOut | None = None

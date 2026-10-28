@@ -7,15 +7,17 @@ every row is checked in the app before ``import`` saves it.
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from ..catalog import levels_from, link_products, name_key, set_listed
 from ..config import get_settings
 from ..deps import DbSession, Membership, TeamDep
-from ..models import Product, Shop, ShopPrice
+from ..models import Product, Shop, ShopPrice, Team
 from ..money import MoneyError, to_minor
 from ..schemas import (
     PriceImportIn,
@@ -23,11 +25,12 @@ from ..schemas import (
     PriceScanIn,
     PriceScanOut,
     ProductLevels,
+    ScanJobOut,
     ScannedPriceOut,
 )
 from ..vlm import VlmError, VlmUnavailable, get_parser
 from ..vlm.schema import ParsedPriceList
-from .receipts import ScanCatalog, clip_text, decode_images, parsed_levels
+from .receipts import ScanCatalog, clip_text, decode_images, parsed_levels, start_scan
 
 router = APIRouter(prefix="/teams/{team_id}/prices", tags=["goods"])
 
@@ -76,22 +79,40 @@ def _to_out(parsed: ParsedPriceList, currency: str, catalog: ScanCatalog) -> Pri
     return PriceScanOut(shop=shop, currency=currency, items=items, notes=parsed.notes)
 
 
+async def read_prices(
+    session: Session, team: Team, images: list[bytes], today: date | None
+) -> PriceScanOut:
+    """Read goods and prices off screenshots or photos; nothing is saved."""
+    settings = get_settings()
+    catalog = ScanCatalog(session, team, settings.vlm_known_products)
+    session.commit()  # no open read transaction across the slow model call
+    result = await get_parser(settings).parse_prices(images, catalog.hints, today)
+    return _to_out(result.prices, result.prices.currency or team.currency, catalog)
+
+
 @router.post("/scan", response_model=PriceScanOut)
 async def scan_prices(
     payload: PriceScanIn, membership: Membership, team: TeamDep, session: DbSession
 ) -> PriceScanOut:
-    """Read goods and prices off screenshots or photos; nothing is saved."""
-    settings = get_settings()
+    """Read prices within the request. The app starts a job instead; see below."""
     images = decode_images(payload.images, "scan")
-    catalog = ScanCatalog(session, team, settings.vlm_known_products)
-    session.commit()  # no open read transaction across the slow model call
     try:
-        result = await get_parser(settings).parse_prices(images, catalog.hints, payload.today)
-        return _to_out(result.prices, result.prices.currency or team.currency, catalog)
+        return await read_prices(session, team, images, payload.today)
     except VlmUnavailable as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
     except VlmError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+
+
+@router.post("/scan/jobs", response_model=ScanJobOut, status_code=status.HTTP_202_ACCEPTED)
+async def start_price_scan(payload: PriceScanIn, membership: Membership) -> ScanJobOut:
+    """Read prices in the background; ``/api/scans/{id}`` says when they are read."""
+    images = decode_images(payload.images, "scan")
+    return start_scan(
+        membership,
+        "prices",
+        lambda session, team: read_prices(session, team, images, payload.today),
+    )
 
 
 @router.post("/import", response_model=PriceImportOut)

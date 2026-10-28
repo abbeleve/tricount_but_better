@@ -6,6 +6,7 @@ import { useAuth } from "../hooks/useAuth";
 import { swatch } from "../lib/glass";
 import { useI18n } from "../lib/i18n";
 import { syncThemeColor } from "../lib/themeColor";
+import { ScanJobsMenu } from "./ScanJobs";
 import { Avatar, Button, cx } from "./ui";
 
 function useTheme() {
@@ -288,6 +289,7 @@ export function Header({ back }: { back?: Back }) {
         )}
         <div className="flex shrink-0 items-center gap-1">
           <ThemeToggle theme={theme} className="hidden sm:grid" />
+          <ScanJobsMenu />
           <NotificationBell />
           <AccountMenu theme={theme} />
         </div>
