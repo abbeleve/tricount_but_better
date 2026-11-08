@@ -19,6 +19,18 @@ document.documentElement.lang = currentLanguage;
 export function getLanguage(): Language { return currentLanguage; }
 
 const russian: Record<string, string> = {
+  "Shared expenses": "Общие расходы",
+  "Personal expenses": "Личные расходы",
+  "Expense type": "Тип расходов",
+  "Add personal expense": "Добавить личный расход",
+  "Edit personal expense": "Изменить личный расход",
+  "Delete this personal expense?": "Удалить этот личный расход?",
+  "Personal expense tools": "Инструменты личных расходов",
+  "Only you can see these expenses. No notifications are sent, and team balances stay unchanged.": "Эти расходы видны только вам. Уведомления не отправляются, на долги группы они не влияют.",
+  "Only you can see this expense. Every line is yours, and no notifications are sent.": "Этот расход виден только вам. Все позиции относятся к вам, уведомления не отправляются.",
+  "Could not load personal expenses.": "Не удалось загрузить личные расходы.",
+  "Could not load expenses.": "Не удалось загрузить расходы.",
+  "Could not load this expense.": "Не удалось загрузить этот расход.",
   "Language": "Язык",
   "English": "English",
   "Russian": "Русский",

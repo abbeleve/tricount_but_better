@@ -59,6 +59,10 @@ def team_membership(
     )
     if membership is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "team not found")
+    # Even an accidentally added membership must never grant access to
+    # somebody else's personal ledger.
+    if membership.team.personal_owner_id not in (None, user.id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "team not found")
     return membership
 
 

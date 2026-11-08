@@ -36,6 +36,8 @@ LANGUAGES = ("en", "ru")
 
 def notify_expense_created(session: Session, expense: Expense, actor: User) -> list[Notification]:
     """Queue news of a new expense for everyone in the team except whoever added it."""
+    if expense.team.personal_owner_id is not None:
+        return []
     session.flush()  # assigns the expense its id
     shares = {share.user_id: share.amount for share in expense.shares}
     recipients = session.scalars(

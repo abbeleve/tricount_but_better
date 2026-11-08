@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, onLogout, signOut, tokenStore } from "../lib/api";
 import { removeUserDrafts } from "../lib/drafts";
 import { releasePush } from "../lib/push";
@@ -29,6 +30,7 @@ interface AuthValue {
 const AuthContext = createContext<AuthValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const client = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
 
@@ -49,14 +51,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // A refresh failure anywhere in the app must drop the session everywhere.
-  useEffect(() => onLogout(() => setUser(null)), []);
+  useEffect(() => onLogout(() => {
+    client.clear();
+    setUser(null);
+  }), [client]);
 
   const finish = useCallback(async (tokens: Tokens, beforeEnter?: BeforeEnter) => {
+    // Shared devices must not render a previous account's private query data.
+    client.clear();
     tokenStore.save(tokens);
     const me = await api<User>("/auth/me");
     await beforeEnter?.(me);
     setUser(me);
-  }, []);
+  }, [client]);
 
   const value = useMemo<AuthValue>(
     () => ({

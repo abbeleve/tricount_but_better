@@ -66,6 +66,14 @@ export const useTeams = (enabled = true) =>
 export const useTeam = (teamId: string) =>
   useQuery({ queryKey: keys.team(teamId), queryFn: () => api<TeamDetail>(`/teams/${teamId}`) });
 
+/** Idempotently opens a separate, owner-only namespace for all expense data. */
+export const usePersonalTeam = (teamId: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ["team", teamId, "personal"],
+    queryFn: () => api<TeamDetail>(`/teams/${teamId}/personal`, { method: "POST" }),
+    enabled,
+  });
+
 export const useBalances = (teamId: string) =>
   useQuery({
     queryKey: keys.balances(teamId),

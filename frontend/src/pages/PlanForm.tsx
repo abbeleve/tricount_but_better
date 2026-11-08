@@ -9,6 +9,7 @@ import {
 import { usePlan, useTeam, useTeamInvalidation } from "../hooks/queries";
 import { ApiError, api } from "../lib/api";
 import { toMajorString, toMinor } from "../lib/money";
+import { expensesPath } from "../lib/personal";
 import { useI18n } from "../lib/i18n";
 import type { PlannedExpense } from "../lib/types";
 
@@ -30,7 +31,7 @@ export default function PlanForm() {
   const invalidate = useTeamInvalidation(teamId);
   const editing = Boolean(planId);
   const currency = team.data?.currency ?? "RUB";
-  const backToPlans = `/teams/${teamId}?tab=expenses`;
+  const backToPlans = team.data ? expensesPath(team.data) : `/teams/${teamId}?tab=expenses`;
 
   const [loadedId, setLoadedId] = useState<string | null>(null);
   const [title, setTitle] = useState("");

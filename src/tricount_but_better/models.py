@@ -15,6 +15,7 @@ from sqlalchemy import (
     JSON,
     BigInteger,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
@@ -87,11 +88,26 @@ class User(Base):
 
 class Team(Base):
     __tablename__ = "teams"
+    __table_args__ = (
+        UniqueConstraint("parent_team_id", "personal_owner_id", name="uq_personal_ledger"),
+        CheckConstraint(
+            "(parent_team_id IS NULL) = (personal_owner_id IS NULL)",
+            name="ck_personal_ledger_owner",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(120))
     currency: Mapped[str] = mapped_column(String(3), default="RUB")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    # A personal ledger reuses the same expense/catalog services, but has its
+    # own namespace and exactly one member. No purchase data enters the parent.
+    parent_team_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("teams.id", ondelete="CASCADE")
+    )
+    personal_owner_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE")
+    )
 
     members: Mapped[list[TeamMember]] = relationship(
         back_populates="team", cascade="all, delete-orphan"

@@ -1,5 +1,5 @@
 import { Suspense, useLayoutEffect, useRef, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { AppShell, PageTitle } from "../components/Layout";
 import { BalancesTab } from "../components/BalancesTab";
 import { SpendingTab } from "../components/SpendingTab";
@@ -7,7 +7,8 @@ import { ExpensesTab } from "../components/ExpensesTab";
 import { PeopleTab } from "../components/PeopleTab";
 import { CategoriesTab } from "../components/CategoriesTab";
 import { Card, ErrorState, PRESS, Skeleton, cx } from "../components/ui";
-import { useTeam } from "../hooks/queries";
+import { usePersonalTeam, useTeam } from "../hooks/queries";
+import { expensesPath } from "../lib/personal";
 import { ApiError } from "../lib/api";
 import { personWord, useI18n } from "../lib/i18n";
 import { lazyPage } from "../lib/lazyPage";
@@ -32,7 +33,7 @@ const BACK = { to: "/", label: "All teams" };
  * the strip rather than one underline vanishing and another appearing. It is
  * measured from the live buttons, so it holds at any width and any label length.
  */
-function Tabs({ active, onSelect }: { active: TabId; onSelect: (id: TabId) => void }) {
+function Tabs({ active, onSelect, personal = false }: { active: TabId; onSelect: (id: TabId) => void; personal?: boolean }) {
   const { t } = useI18n();
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [bar, setBar] = useState<{ x: number; w: number } | null>(null);
@@ -57,7 +58,7 @@ function Tabs({ active, onSelect }: { active: TabId; onSelect: (id: TabId) => vo
       )}
     >
       <div role="tablist" aria-label={t("Team sections")} className="no-scrollbar relative flex max-w-full overflow-x-auto overflow-y-hidden sm:gap-1">
-        {TABS.map((tab) => (
+        {TABS.filter((tab) => !personal || (tab.id !== "people" && tab.id !== "balances")).map((tab) => (
           <button
             key={tab.id}
             ref={(el) => {
@@ -93,7 +94,9 @@ export default function TeamDetailPage() {
   const [params, setParams] = useSearchParams();
   const team = useTeam(teamId);
 
-  const active = (TABS.find((t) => t.id === params.get("tab"))?.id ?? "balances") as TabId;
+  const active = (TABS.find((t) => t.id === params.get("tab"))?.id ?? (team.data?.is_personal ? "expenses" : "balances")) as TabId;
+  const personal = active === "expenses" && params.get("scope") === "personal";
+  const personalTeam = usePersonalTeam(teamId, personal && team.data?.is_personal === false);
 
   if (team.isPending) {
     return (
@@ -121,32 +124,61 @@ export default function TeamDetailPage() {
     );
   }
 
+  if (team.data.is_personal && ["expenses", "balances", "people"].includes(active)) {
+    return <Navigate to={expensesPath(team.data)} replace />;
+  }
+
+  const expenseTeam = personal ? personalTeam.data : team.data;
+  const addPath = expenseTeam ? `/teams/${expenseTeam.id}/expenses/new` : null;
+  const addLabel = t(personal || team.data.is_personal ? "Add personal expense" : "Add expense");
+  const back = team.data.is_personal
+    ? { to: expensesPath(team.data), label: t("Personal expenses") }
+    : { ...BACK, label: t(BACK.label) };
+
   return (
-    <AppShell back={{ ...BACK, label: t(BACK.label) }}>
+    <AppShell back={back}>
       <PageTitle
-        title={team.data.name}
-        subtitle={`${team.data.members.length} ${personWord(team.data.members.length, language)} · ${team.data.currency}`}
+        title={team.data.is_personal ? t("Personal expenses") : team.data.name}
+        subtitle={team.data.is_personal ? `${team.data.name} · ${team.data.currency}` : `${team.data.members.length} ${personWord(team.data.members.length, language)} · ${team.data.currency}`}
         action={
-          <Link
-            to={`/teams/${teamId}/expenses/new`}
+          addPath && <Link
+            to={addPath}
             className={cx(
               "hidden h-10 items-center rounded-button bg-ink px-4 text-sm font-medium",
               "text-ink-text hover:bg-ink-hover sm:inline-flex",
               PRESS,
             )}
           >
-            {t("Add expense")}
+            {addLabel}
           </Link>
         }
       />
 
       <Tabs
         active={active}
+        personal={team.data.is_personal}
         onSelect={(id) => setParams(id === "balances" ? {} : { tab: id }, { replace: true })}
       />
 
       {active === "balances" && <BalancesTab team={team.data} />}
-      {active === "expenses" && <ExpensesTab team={team.data} />}
+      {active === "expenses" && (
+        <div className="flex flex-col gap-4">
+          <div role="group" aria-label={t("Expense type")} className="grid grid-cols-2 rounded-segment bg-surface-2 p-1">
+            {(["shared", "personal"] as const).map((scope) => (
+              <button key={scope} type="button" aria-pressed={personal === (scope === "personal")}
+                onClick={() => setParams({ tab: "expenses", ...(scope === "personal" ? { scope } : {}) }, { replace: true })}
+                className={cx("min-h-11 rounded-segment-option px-2 py-2 text-sm transition-colors",
+                  personal === (scope === "personal") ? "bg-raised font-medium text-body shadow-raised" : "text-muted hover:text-body")}>
+                {t(scope === "personal" ? "Personal expenses" : "Shared expenses")}
+              </button>
+            ))}
+          </div>
+          {personal && <p className="px-1 text-[13px] text-muted">{t("Only you can see these expenses. No notifications are sent, and team balances stay unchanged.")}</p>}
+          {personal && personalTeam.isPending && <Card className="p-5"><Skeleton className="h-48 w-full" /></Card>}
+          {personal && personalTeam.isError && <Card><ErrorState message={t("Could not load personal expenses.")} onRetry={() => personalTeam.refetch()} /></Card>}
+          {expenseTeam && <ExpensesTab key={expenseTeam.id} team={expenseTeam} />}
+        </div>
+      )}
       {active === "spending" && <SpendingTab team={team.data} />}
       {active === "prices" && (
         <Suspense fallback={<Card className="p-5"><Skeleton className="h-48 w-full" /></Card>}>
@@ -157,8 +189,8 @@ export default function TeamDetailPage() {
       {active === "categories" && <CategoriesTab teamId={teamId} />}
 
       {/* Phone: the primary action stays reachable with a thumb, above the home indicator. */}
-      <Link
-        to={`/teams/${teamId}/expenses/new`}
+      {addPath && <Link
+        to={addPath}
         className={cx(
           "fixed z-30 flex h-13 items-center gap-2 rounded-full px-5 sm:hidden",
           "bottom-[calc(1rem+env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))]",
@@ -169,8 +201,8 @@ export default function TeamDetailPage() {
         <svg viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <path d="M8 3v10M3 8h10" />
         </svg>
-        {t("Add expense")}
-      </Link>
+        {addLabel}
+      </Link>}
     </AppShell>
   );
 }

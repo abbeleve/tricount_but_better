@@ -126,5 +126,6 @@ def complete_plan(
     session.delete(plan)
     notifications = notify_expense_created(session, expense, user)
     session.commit()
-    background.add_task(deliver_push, [n.id for n in notifications])
+    if notifications:
+        background.add_task(deliver_push, [n.id for n in notifications])
     return _serialise(expense, changes)

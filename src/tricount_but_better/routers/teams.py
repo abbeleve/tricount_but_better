@@ -6,6 +6,7 @@ import uuid
 
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from ..balances import simplify_debts, team_net
 from ..deps import CurrentUser, DbSession, Membership, OwnerMembership, TeamDep
@@ -66,6 +67,19 @@ def _members_out(session: DbSession, team_id: uuid.UUID) -> list[MemberOut]:
     ]
 
 
+def _detail(session: DbSession, team: Team, role: TeamRole) -> TeamDetailOut:
+    return TeamDetailOut(
+        id=team.id,
+        name=team.name,
+        currency=team.currency,
+        created_at=team.created_at,
+        members=_members_out(session, team.id),
+        my_role=role,
+        is_personal=team.personal_owner_id is not None,
+        parent_team_id=team.parent_team_id,
+    )
+
+
 @router.post("", response_model=TeamDetailOut, status_code=status.HTTP_201_CREATED)
 def create_team(payload: TeamCreate, user: CurrentUser, session: DbSession) -> TeamDetailOut:
     team = Team(name=payload.name.strip(), currency=payload.currency.upper())
@@ -98,7 +112,7 @@ def list_teams(user: CurrentUser, session: DbSession) -> list[TeamOut]:
     teams = session.scalars(
         select(Team)
         .join(TeamMember, TeamMember.team_id == Team.id)
-        .where(TeamMember.user_id == user.id)
+        .where(TeamMember.user_id == user.id, Team.personal_owner_id.is_(None))
         .order_by(Team.created_at.desc())
     ).all()
     if not teams:
@@ -163,14 +177,41 @@ def list_teams(user: CurrentUser, session: DbSession) -> list[TeamOut]:
 
 @router.get("/{team_id}", response_model=TeamDetailOut)
 def get_team_detail(membership: Membership, team: TeamDep, session: DbSession) -> TeamDetailOut:
-    return TeamDetailOut(
-        id=team.id,
-        name=team.name,
-        currency=team.currency,
-        created_at=team.created_at,
-        members=_members_out(session, team.id),
-        my_role=membership.role,
-    )
+    return _detail(session, team, membership.role)
+
+
+@router.post("/{team_id}/personal", response_model=TeamDetailOut)
+def personal_ledger(
+    membership: Membership, team: TeamDep, user: CurrentUser, session: DbSession
+) -> TeamDetailOut:
+    """Open this user's isolated ledger; repeated/concurrent opens reuse it."""
+    if team.personal_owner_id is not None:
+        return _detail(session, team, TeamRole.owner)
+    parent_id = team.id
+    query = select(Team).where(Team.parent_team_id == parent_id, Team.personal_owner_id == user.id)
+    ledger = session.scalar(query)
+    if ledger is None:
+        ledger = Team(
+            name=team.name,
+            currency=team.currency,
+            parent_team_id=parent_id,
+            personal_owner_id=user.id,
+        )
+        try:
+            session.add(ledger)
+            session.flush()
+            session.add(TeamMember(team_id=ledger.id, user_id=user.id, role=TeamRole.owner))
+            session.add_all(
+                Category(team_id=ledger.id, name=name, emoji=emoji)
+                for name, emoji in DEFAULT_CATEGORIES
+            )
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            ledger = session.scalar(query)
+            if ledger is None:
+                raise
+    return _detail(session, ledger, TeamRole.owner)
 
 
 @router.patch("/{team_id}", response_model=TeamDetailOut)
@@ -183,14 +224,7 @@ def update_team(
     if payload.name is not None:
         team.name = payload.name.strip()
     session.commit()
-    return TeamDetailOut(
-        id=team.id,
-        name=team.name,
-        currency=team.currency,
-        created_at=team.created_at,
-        members=_members_out(session, team.id),
-        my_role=membership.role,
-    )
+    return _detail(session, team, membership.role)
 
 
 @router.delete("/{team_id}", status_code=status.HTTP_204_NO_CONTENT)

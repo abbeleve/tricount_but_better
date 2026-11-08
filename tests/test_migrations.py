@@ -14,6 +14,8 @@ import sys
 import uuid
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -184,3 +186,48 @@ def test_saved_prices_link_to_the_receipt_that_brought_them_in(tmp_path) -> None
     with sqlite3.connect(database) as db:
         columns = {row[1] for row in db.execute("PRAGMA table_info(shop_prices)")}
     assert "regular_expense_id" not in columns
+
+
+def test_personal_ledger_migration_preserves_existing_teams_and_expenses(tmp_path) -> None:
+    database = tmp_path / "personal.db"
+    _alembic(database, "upgrade", "7329f5bb3220")
+    team, expense, user = _id(), _id(), _id()
+    with sqlite3.connect(database) as db:
+        db.execute(
+            "INSERT INTO teams (id, name, currency, created_at)"
+            " VALUES (?, 'Existing team', 'RUB', '2026-11-08')",
+            (team,),
+        )
+        db.execute(
+            "INSERT INTO expenses (id, team_id, payer_id, created_by_id, title, note,"
+            " currency, total, spent_at, split_mode, source, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, 'Existing expense', '', 'RUB', 12345, '2026-11-08',"
+            " 'total', 'manual', '2026-11-08', '2026-11-08')",
+            (expense, team, user, user),
+        )
+    _alembic(database, "upgrade", "head")
+    _alembic(database, "check")
+    with sqlite3.connect(database) as db:
+        assert db.execute(
+            "SELECT id, name, parent_team_id, personal_owner_id FROM teams"
+        ).fetchall() == [(team, "Existing team", None, None)]
+        assert db.execute("SELECT id, team_id, total FROM expenses").fetchall() == [
+            (expense, team, 12345)
+        ]
+        # The database itself prevents a duplicate ledger for the same person.
+        db.execute(
+            "INSERT INTO teams (id, name, currency, created_at, parent_team_id, personal_owner_id)"
+            " VALUES (?, 'Private', 'RUB', '2026-11-08', ?, ?)",
+            (_id(), team, user),
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO teams"
+                " (id, name, currency, created_at, parent_team_id, personal_owner_id)"
+                " VALUES (?, 'Duplicate', 'RUB', '2026-11-08', ?, ?)",
+                (_id(), team, user),
+            )
+    # An old schema must not silently turn private ledgers into shared teams.
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        _alembic(database, "downgrade", "7329f5bb3220")
+    assert b"Remove personal ledgers" in error.value.stderr

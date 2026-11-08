@@ -41,6 +41,7 @@ import { ApiError, api } from "../lib/api";
 import { todayLocal } from "../lib/dates";
 import { draftKey, readDraft, removeDraft, writeDraft, type DraftSlot } from "../lib/drafts";
 import { previewEqualSplit, toMajorString, toMinor } from "../lib/money";
+import { expensesPath } from "../lib/personal";
 import { useI18n } from "../lib/i18n";
 import { basketElsewhere, initialAnswers, paidPerUnit, receiptVsUsual } from "../lib/prices";
 import type {
@@ -149,6 +150,8 @@ export default function ExpenseForm() {
   const reviewPrices = useReviewPrices(teamId);
 
   const editing = Boolean(expenseId);
+  const personal = team.data?.is_personal ?? false;
+  const listPath = team.data ? expensesPath(team.data) : `/teams/${teamId}?tab=expenses`;
   const members = team.data?.members ?? [];
   const currency = team.data?.currency ?? "RUB";
 
@@ -326,7 +329,7 @@ export default function ExpenseForm() {
     mutationFn: () => {
       const base = {
         title: title.trim(),
-        payer_id: payerId,
+        payer_id: personal ? user!.id : payerId,
         spent_at: spentAt,
         note,
         category_id: categoryId || null,
@@ -340,7 +343,8 @@ export default function ExpenseForm() {
           total: toMinor(item.amount, currency) ?? 0,
           quantity: item.quantity,
           unit_price: item.unitPrice,
-          shares: item.userIds.map((id) => ({ user_id: id, weight: item.weights?.[id] ?? "1" })),
+          shares: personal ? [{ user_id: user!.id, weight: "1" }]
+            : item.userIds.map((id) => ({ user_id: id, weight: item.weights?.[id] ?? "1" })),
           product_id: item.track === false ? null : item.productId ?? null,
           product_name: item.productName || null,
           levels: item.track === false ? null : item.levels ?? null,
@@ -363,7 +367,7 @@ export default function ExpenseForm() {
         setReview(initialAnswers(expense.price_changes));
         window.scrollTo({ top: 0 });
       } else {
-        navigate(`/teams/${teamId}?tab=expenses`);
+        navigate(listPath);
       }
     },
   });
@@ -381,15 +385,15 @@ export default function ExpenseForm() {
   if (items.some((i) => !i.name.trim())) problems.push(t("Every line needs a name."));
   if (items.some((i) => toMinor(i.amount, currency) === null))
     problems.push(t("Every line needs an amount."));
-  if (items.some((i) => i.userIds.length === 0))
+  if (!personal && items.some((i) => i.userIds.length === 0))
     problems.push(t("Every line needs at least one person on it."));
   const valid = problems.length === 0;
 
   /* ------------------------------------------------------------- render */
 
   const back = {
-    to: planId ? `/teams/${teamId}/plans/${planId}` : `/teams/${teamId}?tab=expenses`,
-    label: team.data?.name ?? t("Back"),
+    to: planId ? `/teams/${teamId}/plans/${planId}` : listPath,
+    label: personal ? t("Personal expenses") : team.data?.name ?? t("Back"),
   };
 
   if (team.isPending || (editing && existing.isPending) || (planId && planned.isPending)) {
@@ -403,6 +407,13 @@ export default function ExpenseForm() {
 
   if (planId && planned.isError) {
     return <AppShell back={back}><Card><ErrorState message={t("Could not load this plan.")} onRetry={() => planned.refetch()} /></Card></AppShell>;
+  }
+
+  if (team.isError || (editing && existing.isError)) {
+    return <AppShell back={back}><Card><ErrorState message={t("Could not load this expense.")} onRetry={() => {
+      if (team.isError) team.refetch();
+      if (existing.isError) existing.refetch();
+    }} /></Card></AppShell>;
   }
 
   const updateItem = (key: string, patch: Partial<ItemDraft>) =>
@@ -467,7 +478,7 @@ export default function ExpenseForm() {
             loading={save.isPending}
             disabled={!valid || scan.scanning}
           >
-            {t(editing ? "Save changes" : planId ? "Record purchase" : "Add expense")}
+            {t(editing ? "Save changes" : planId ? "Record purchase" : personal ? "Add personal expense" : "Add expense")}
           </Button>
           {/* Wide screens only: on a phone the header's back button is the way out.
               Wrapped because the button's own display class would beat `hidden`. */}
@@ -523,7 +534,7 @@ export default function ExpenseForm() {
   }
 
   if (review) {
-    const done = () => navigate(`/teams/${teamId}?tab=expenses`);
+    const done = () => navigate(listPath);
     const reviewBar = (
       <div className="flex flex-col gap-2">
         <FormError message={reviewPrices.error instanceof ApiError ? reviewPrices.error.message : null} />
@@ -539,7 +550,7 @@ export default function ExpenseForm() {
       </div>
     );
     return (
-      <AppShell back={{ to: `/teams/${teamId}?tab=expenses`, label: team.data?.name ?? t("Back") }} bar={reviewBar}>
+      <AppShell back={back} bar={reviewBar}>
         <PageTitle
           title={t(review.length === 1 ? "A price has changed" : "Some prices have changed")}
           subtitle={t("The expense is saved. Should these become the shop's prices?")}
@@ -556,8 +567,8 @@ export default function ExpenseForm() {
 
   return (
     <AppShell back={back} bar={bar}>
-      <PageTitle title={t(editing ? "Edit expense" : planId ? "Complete purchase" : "Add an expense")}
-        subtitle={planId ? t("Fill in the prices and choose who shares each item.") : undefined} />
+      <PageTitle title={t(editing ? (personal ? "Edit personal expense" : "Edit expense") : planId ? "Complete purchase" : personal ? "Add personal expense" : "Add an expense")}
+        subtitle={personal ? t("Only you can see this expense. Every line is yours, and no notifications are sent.") : planId ? t("Fill in the prices and choose who shares each item.") : undefined} />
 
       {draft && (
         <Card className="mb-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3">
@@ -610,8 +621,8 @@ export default function ExpenseForm() {
           </Field>
 
           {/* Side by side from 360px: both fit, and the amount moves up the screen. */}
-          <div className="grid gap-4 min-[360px]:grid-cols-2 min-[360px]:gap-3">
-            <Field label={t("Who paid?")}>
+          <div className={cx("grid gap-4", !personal && "min-[360px]:grid-cols-2 min-[360px]:gap-3")}>
+            {!personal && <Field label={t("Who paid?")}>
               {(id) => (
                 <Select id={id} value={payerId} onChange={(e) => setPayerId(e.target.value)}>
                   {members.map((m) => (
@@ -622,7 +633,7 @@ export default function ExpenseForm() {
                   ))}
                 </Select>
               )}
-            </Field>
+            </Field>}
             <Field label={t("When?")}>
               {(id) => (
                 <Input id={id} type="date" value={spentAt} onChange={(e) => {
@@ -663,9 +674,9 @@ export default function ExpenseForm() {
           className="scroll-mt-[calc(var(--header-h)+env(safe-area-inset-top)+1rem)]"
         >
           <Card className="flex flex-col gap-4 p-4 sm:p-5">
-            <p className="text-[13px] text-muted">
+            {!personal && <p className="text-[13px] text-muted">
               {t("Each line is split equally between the people highlighted on it. Turn someone off a line and they pay nothing towards it.")}
-            </p>
+            </p>}
 
             {items.length === 0 && (
               <p className="hatch rounded-control bg-surface-2 px-3 py-6 text-center text-sm text-muted">
@@ -710,6 +721,7 @@ export default function ExpenseForm() {
                   </div>
                   <div className="flex items-start gap-2">
                     <div className="min-w-0 flex-1">
+                      {!personal && (
                       <PeoplePicker
                         size="sm"
                         members={members}
@@ -722,6 +734,7 @@ export default function ExpenseForm() {
                           })
                         }
                       />
+                      )}
                     </div>
                     <button
                       type="button"
@@ -763,7 +776,7 @@ export default function ExpenseForm() {
               </p>
             </div>
 
-            {itemPreview && itemPreview.size > 0 && (
+            {!personal && itemPreview && itemPreview.size > 0 && (
               <ul className="flex flex-col divide-y divide-line rounded-control bg-surface-2 px-3">
                 {members
                   .filter((m) => itemPreview.has(m.user_id))
@@ -806,7 +819,7 @@ export default function ExpenseForm() {
             className="mt-2 w-full sm:w-auto sm:self-start"
             loading={remove.isPending}
             onClick={() => {
-              if (window.confirm(t("Delete this expense? Balances will be recalculated."))) {
+              if (window.confirm(t(personal ? "Delete this personal expense?" : "Delete this expense? Balances will be recalculated."))) {
                 remove.mutate(expenseId!, { onSuccess: cancel });
               }
             }}

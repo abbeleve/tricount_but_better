@@ -110,6 +110,16 @@ export function ExpensesTab({ team }: { team: TeamDetail }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {team.is_personal && (
+        <nav aria-label={t("Personal expense tools")} className="flex flex-wrap gap-2">
+          {([ ["spending", "Spending"], ["prices", "Prices"], ["categories", "Categories"] ] as const).map(([tab, label]) => (
+            <Link key={tab} to={`/teams/${team.id}?tab=${tab}`}
+              className="inline-flex min-h-11 items-center rounded-button border border-line-strong px-3 py-2 text-sm text-body hover:bg-surface-2">
+              {t(label)}
+            </Link>
+          ))}
+        </nav>
+      )}
       <Drafts team={team} />
       <section>
         <div className="mb-2 flex items-center justify-between gap-3 px-1">
@@ -169,6 +179,8 @@ export function ExpensesTab({ team }: { team: TeamDetail }) {
         </Card>
       )}
 
+      {expenses.isError && <Card><ErrorState message={t("Could not load expenses.")} onRetry={() => expenses.refetch()} /></Card>}
+
       {expenses.data && rows.length === 0 && (
         <Card>
           <EmptyState
@@ -222,7 +234,7 @@ export function ExpensesTab({ team }: { team: TeamDetail }) {
                         )}
                         {expense.source === "receipt" && <Chip>{t("scanned")}</Chip>}
                       </p>
-                      <p className="shrink-0 text-right text-[12px] text-muted">
+                      {!team.is_personal && <p className="shrink-0 text-right text-[12px] text-muted">
                         {myShare === 0 ? (
                           t("you are not on this one")
                         ) : (
@@ -231,7 +243,7 @@ export function ExpensesTab({ team }: { team: TeamDetail }) {
                             <Money minor={myShare} currency={expense.currency} className="text-[12px]" />
                           </>
                         )}
-                      </p>
+                      </p>}
                     </div>
                   </Link>
                 );

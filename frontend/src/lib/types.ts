@@ -42,6 +42,8 @@ export interface TeamDetail {
   created_at: string;
   members: Member[];
   my_role: TeamRole;
+  is_personal: boolean;
+  parent_team_id: string | null;
 }
 
 export interface Category {

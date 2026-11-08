@@ -142,6 +142,8 @@ class TeamDetailOut(BaseModel):
     created_at: datetime
     members: list[MemberOut]
     my_role: TeamRole
+    is_personal: bool = False
+    parent_team_id: uuid.UUID | None = None
 
 
 # ------------------------------------------------------------------------ invites

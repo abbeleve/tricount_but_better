@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import func, select
 
-from ..deps import CurrentUser, DbSession, Membership, OwnerMembership
+from ..deps import CurrentUser, DbSession, Membership, OwnerMembership, TeamDep
 from ..models import Invite, Team, TeamMember, TeamRole
 from ..schemas import InviteCreate, InviteOut, InvitePreviewOut, TeamDetailOut
 from .teams import _members_out
@@ -58,9 +58,12 @@ def _out(invite: Invite) -> InviteOut:
 def create_invite(
     payload: InviteCreate,
     membership: OwnerMembership,
+    team: TeamDep,
     user: CurrentUser,
     session: DbSession,
 ) -> InviteOut:
+    if team.personal_owner_id is not None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "personal expenses cannot be shared")
     expires_at = (
         datetime.now(UTC) + timedelta(days=payload.expires_in_days)
         if payload.expires_in_days
@@ -99,7 +102,11 @@ def revoke_invite(invite_id: uuid.UUID, membership: OwnerMembership, session: Db
 
 def _lookup(session: DbSession, code: str) -> Invite:
     invite = session.scalar(select(Invite).where(Invite.code == code))
-    if invite is None or not _is_usable(invite):
+    if (
+        invite is None
+        or not _is_usable(invite)
+        or session.get(Team, invite.team_id).personal_owner_id is not None
+    ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "this invite link is no longer valid")
     return invite
 

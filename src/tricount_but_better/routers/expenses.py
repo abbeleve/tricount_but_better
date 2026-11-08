@@ -26,6 +26,7 @@ from ..models import (
     Receipt,
     Shop,
     SplitMode,
+    Team,
     TeamMember,
 )
 from ..notifications import deliver_push, notify_expense_created
@@ -36,6 +37,7 @@ from ..schemas import (
     ExpenseOut,
     ExpenseUpdate,
     PriceChangeOut,
+    ShareIn,
     ShareOut,
 )
 from ..services import SplitError, apply_item_splits, apply_total_split, build_item_shares
@@ -99,6 +101,18 @@ def _apply(
     team_id: uuid.UUID,
 ) -> None:
     """Validate a payload against team membership and write it onto ``expense``."""
+    team = session.get(Team, team_id)
+    if team is not None and team.personal_owner_id is not None:
+        # Personal expenses always belong entirely to the authenticated owner,
+        # including lines read from a receipt or restored from an old draft.
+        shares = [ShareIn(user_id=team.personal_owner_id)]
+        payload = payload.model_copy(
+            update={
+                "payer_id": team.personal_owner_id,
+                "shares": shares,
+                "items": [item.model_copy(update={"shares": shares}) for item in payload.items],
+            }
+        )
     if payload.payer_id not in member_ids:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "the payer is not in this team")
 
@@ -291,7 +305,8 @@ def create_expense(
     changes = track_prices(session, expense, payload)
     notifications = notify_expense_created(session, expense, user)
     session.commit()
-    background.add_task(deliver_push, [n.id for n in notifications])
+    if notifications:
+        background.add_task(deliver_push, [n.id for n in notifications])
     return _serialise(expense, changes)
 
 
