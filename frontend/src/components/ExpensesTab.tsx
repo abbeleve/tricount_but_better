@@ -110,16 +110,6 @@ export function ExpensesTab({ team }: { team: TeamDetail }) {
 
   return (
     <div className="flex flex-col gap-4">
-      {team.is_personal && (
-        <nav aria-label={t("Personal expense tools")} className="flex flex-wrap gap-2">
-          {([ ["spending", "Spending"], ["prices", "Prices"], ["categories", "Categories"] ] as const).map(([tab, label]) => (
-            <Link key={tab} to={`/teams/${team.id}?tab=${tab}`}
-              className="inline-flex min-h-11 items-center rounded-button border border-line-strong px-3 py-2 text-sm text-body hover:bg-surface-2">
-              {t(label)}
-            </Link>
-          ))}
-        </nav>
-      )}
       <Drafts team={team} />
       <section>
         <div className="mb-2 flex items-center justify-between gap-3 px-1">

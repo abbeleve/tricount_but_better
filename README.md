@@ -16,8 +16,11 @@ Photograph the receipt, and a vision model reads it into editable line items.
   clears everything. Mark a payment as made and it settles.
 - **Personal expenses** — under **Expenses → Personal expenses**, record purchases
   just for yourself, without choosing a payer or participants. Only you can read
-  or change them; no notifications are sent and shared balances/analytics are
-  unaffected. Receipt scanning, drafts, plans, categories, shops, price history
+  or change them; no notifications are sent and shared balances are unchanged.
+  The main **Spending** tab includes shared purchases and the viewer's own
+  personal expenses, including the per-person charts; nobody else sees those
+  personal amounts. No separate personal statistics section is needed.
+  Receipt scanning, drafts, plans, categories, shops, price history
   and comparisons work as usual, in a separate private ledger per user and team.
   Personal prices and categories never appear in the team's shared catalogue.
 - **Line-by-line expenses** — enter each item and its price, or read the lines from a photographed receipt. Choose who shares each line. Existing total-split expenses open as a single editable line. A new expense that is not added yet — say, a scanned receipt you were still checking — stays as a **draft**: leave the page and it waits under **Drafts** in the Expenses tab, and the form reopens as you left it, until you add it or delete it. Drafts are kept on that device only, never on the server, and are removed on sign-out or after a month.

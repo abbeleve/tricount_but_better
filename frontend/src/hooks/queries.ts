@@ -165,6 +165,8 @@ export function useTeamInvalidation(teamId: string) {
   const client = useQueryClient();
   return () => {
     client.invalidateQueries({ queryKey: ["team", teamId] });
+    const parentId = client.getQueryData<TeamDetail>(keys.team(teamId))?.parent_team_id;
+    if (parentId) client.invalidateQueries({ queryKey: keys.spending(parentId) });
     client.invalidateQueries({ queryKey: keys.teams });
   };
 }

@@ -75,7 +75,7 @@ export function SpendingTab({ team }: { team: TeamDetail }) {
   return <div className="flex flex-col gap-4">
     <div className="px-1">
       <h2 className="text-base font-semibold text-body">{t("Spending")}</h2>
-      <p className="mt-1 text-[13px] text-muted">{t("Your team's spending, over time.")}</p>
+      <p className="mt-1 text-[13px] text-muted">{t("Team spending and your personal expenses. Only you see your personal amounts.")}</p>
     </div>
     <div className="grid gap-3 sm:grid-cols-3">
       {SPENDING_PERIODS.map((item) => {
@@ -174,6 +174,6 @@ export function SpendingTab({ team }: { team: TeamDetail }) {
         </li>)}</ul>
       </details>
     </Card>
-    <p className="px-1 text-[11px] text-muted">{t("Totals include all team expenses by purchase date, with refunds deducted. Plans and paybacks are excluded.")}</p>
+    <p className="px-1 text-[11px] text-muted">{t("Totals include team expenses and your personal purchases by purchase date, with refunds deducted. Plans and paybacks are excluded.")}</p>
   </div>;
 }

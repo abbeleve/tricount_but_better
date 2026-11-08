@@ -128,6 +128,10 @@ export default function TeamDetailPage() {
     return <Navigate to={expensesPath(team.data)} replace />;
   }
 
+  if (team.data.parent_team_id && active === "spending") {
+    return <Navigate to={`/teams/${team.data.parent_team_id}?tab=spending`} replace />;
+  }
+
   const expenseTeam = personal ? personalTeam.data : team.data;
   const addPath = expenseTeam ? `/teams/${expenseTeam.id}/expenses/new` : null;
   const addLabel = t(personal || team.data.is_personal ? "Add personal expense" : "Add expense");

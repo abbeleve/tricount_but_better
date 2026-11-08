@@ -125,7 +125,7 @@ def test_parent_owner_cannot_read_write_or_discover_personal_resources(
     assert client.get(endpoint, headers=alice.headers).status_code == 404
 
 
-def test_personal_purchases_leave_shared_aggregates_and_notifications_unchanged(
+def test_personal_purchases_leave_other_members_views_and_notifications_unchanged(
     client, team, alice, bob, carol, session, monkeypatch
 ):
     personal = _ledger(client, team, bob)["id"]
@@ -166,6 +166,9 @@ def test_personal_purchases_leave_shared_aggregates_and_notifications_unchanged(
         json=_body(bob),
     )
     assert completed.status_code == 201, completed.text
+    assert client.get(f"/api/teams/{team}/spending", headers=bob.headers).json()["days"] == [
+        {"date": "2026-11-08", "total": 24690, "expense_count": 2}
+    ]
     for actor in (alice, bob, carol):
         assert client.get("/api/notifications", headers=actor.headers).json() == {
             "items": [],

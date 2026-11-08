@@ -1,4 +1,4 @@
-"""Spending includes the entire ledger, once, and stays private to the team."""
+"""Spending includes shared expenses and only the viewer's personal purchases."""
 
 import uuid
 from datetime import date
@@ -26,6 +26,12 @@ def _spending(client, team, actor):
     response = client.get(f"/api/teams/{team}/spending", headers=actor.headers)
     assert response.status_code == 200, response.text
     return response.json()
+
+
+def _personal(client, team, actor):
+    response = client.post(f"/api/teams/{team}/personal", headers=actor.headers)
+    assert response.status_code == 200, response.text
+    return response.json()["id"]
 
 
 def test_empty_spending_and_membership(client, team, alice, bob):
@@ -139,6 +145,87 @@ def test_spending_updates_after_edit_and_delete(client, team, alice):
     assert _spending(client, team, alice)["days"] == []
 
 
+def test_spending_combines_shared_and_only_the_viewers_own_personal_purchases(
+    client, team, alice, bob, carol
+):
+    _add(client, team, alice, total=300)
+    alice_ledger = _personal(client, team, alice)
+    bob_ledger = _personal(client, team, bob)
+    _add(
+        client,
+        alice_ledger,
+        alice,
+        split_mode="items",
+        total=None,
+        shares=[],
+        items=[
+            {"name": "A", "total": 20, "shares": [{"user_id": alice.id}]},
+            {"name": "B", "total": 30, "shares": [{"user_id": alice.id}]},
+        ],
+    )
+    _add(client, alice_ledger, alice, total=-10, spent_at="2026-10-02", title="Refund")
+    _add(client, bob_ledger, bob, total=70)
+    other = client.post("/api/teams", json={"name": "Other"}, headers=alice.headers).json()["id"]
+    _add(client, _personal(client, other, alice), alice, total=9999)
+
+    assert _spending(client, team, alice)["days"] == [
+        {"date": "2026-10-01", "total": 350, "expense_count": 2},
+        {"date": "2026-10-02", "total": -10, "expense_count": 1},
+    ]
+    assert _spending(client, team, bob)["days"] == [
+        {"date": "2026-10-01", "total": 370, "expense_count": 2},
+    ]
+    expected_shared = [{"date": "2026-10-01", "total": 300, "expense_count": 1}]
+    assert _spending(client, team, carol)["days"] == expected_shared
+    # A query parameter cannot select another member's private contribution.
+    assert (
+        client.get(f"/api/teams/{team}/spending?user_id={alice.id}", headers=carol.headers).json()[
+            "days"
+        ]
+        == expected_shared
+    )
+    # The legacy private endpoint still counts each private purchase only once.
+    assert _spending(client, alice_ledger, alice)["days"] == [
+        {"date": "2026-10-01", "total": 50, "expense_count": 1},
+        {"date": "2026-10-02", "total": -10, "expense_count": 1},
+    ]
+    assert (
+        client.get(f"/api/teams/{team}/balances", headers=alice.headers).json()["total_spend"]
+        == 300
+    )
+    assert (
+        client.get(f"/api/teams/{team}/expenses", headers=alice.headers).json()["total_count"] == 1
+    )
+
+
+def test_main_spending_follows_personal_edits_and_deletions(client, team, alice, bob):
+    _add(client, team, bob, total=100)
+    ledger = _personal(client, team, alice)
+    expense = _add(client, ledger, alice, total=25)
+    assert _spending(client, team, alice)["days"] == [
+        {"date": "2026-10-01", "total": 125, "expense_count": 2},
+    ]
+    endpoint = f"/api/teams/{ledger}/expenses/{expense['id']}"
+    response = client.put(
+        endpoint,
+        headers=alice.headers,
+        json={
+            "title": "Corrected",
+            "payer_id": alice.id,
+            "spent_at": "2026-10-02",
+            "total": 75,
+            "shares": [{"user_id": alice.id}],
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert _spending(client, team, alice)["days"] == [
+        {"date": "2026-10-01", "total": 100, "expense_count": 1},
+        {"date": "2026-10-02", "total": 75, "expense_count": 1},
+    ]
+    assert client.delete(endpoint, headers=alice.headers).status_code == 204
+    assert _spending(client, team, alice) == _spending(client, team, bob)
+
+
 def _people(client, team, actor):
     response = client.get(f"/api/teams/{team}/spending/people", headers=actor.headers)
     assert response.status_code == 200, response.text
@@ -147,6 +234,29 @@ def _people(client, team, actor):
 
 def _days(person, measure):
     return {day["date"]: (day["total"], day["expense_count"]) for day in person[measure]}
+
+
+def test_people_spending_adds_personal_amounts_only_for_the_viewer(client, team, alice, bob, carol):
+    _add(
+        client,
+        team,
+        alice,
+        total=300,
+        shares=[{"user_id": person.id} for person in (alice, bob, carol)],
+    )
+    _add(client, _personal(client, team, alice), alice, total=50)
+    _add(client, _personal(client, team, bob), bob, total=70)
+    for viewer, private_amount in ((alice, 50), (bob, 70), (carol, 0)):
+        people = _people(client, team, viewer)["people"]
+        assert len(people) == 3
+        for person in people:
+            own_private = private_amount if person["user_id"] == viewer.id else 0
+            expected_paid = (300 if person["user_id"] == alice.id else 0) + own_private
+            assert sum(day["total"] for day in person["paid"]) == expected_paid
+            assert sum(day["total"] for day in person["share"]) == 100 + own_private
+        total = _spending(client, team, viewer)["days"][0]["total"]
+        for measure in ("paid", "share"):
+            assert sum(day["total"] for person in people for day in person[measure]) == total
 
 
 def test_people_spending_splits_who_paid_from_whose_share(client, team, alice, bob, carol):

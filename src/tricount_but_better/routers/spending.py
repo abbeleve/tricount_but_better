@@ -7,15 +7,23 @@ from datetime import date
 from fastapi import APIRouter
 from sqlalchemy import func, select
 
-from ..deps import DbSession, TeamDep
-from ..models import Expense, ExpenseShare, TeamMember, User
+from ..deps import CurrentUser, DbSession, TeamDep
+from ..models import Expense, ExpenseShare, Team, TeamMember, User
 from ..schemas import DailySpendingOut, PeopleSpendingOut, PersonSpendingOut, SpendingOut
 
 router = APIRouter(prefix="/teams/{team_id}/spending", tags=["spending"])
 
 
+def _visible_team_ids(team_id: uuid.UUID, user_id: uuid.UUID):
+    """Shared purchases plus this viewer's personal ledger, never anybody else's."""
+    return select(Team.id).where(
+        (Team.id == team_id)
+        | ((Team.parent_team_id == team_id) & (Team.personal_owner_id == user_id))
+    )
+
+
 @router.get("", response_model=SpendingOut)
-def spending(team: TeamDep, session: DbSession) -> SpendingOut:
+def spending(team: TeamDep, user: CurrentUser, session: DbSession) -> SpendingOut:
     """Sum each expense once, without joins to its items or participant shares.
 
     Calendar boundaries belong to the client: spent_at is a purchase date,
@@ -24,7 +32,7 @@ def spending(team: TeamDep, session: DbSession) -> SpendingOut:
     """
     rows = session.execute(
         select(Expense.spent_at, func.sum(Expense.total), func.count(Expense.id))
-        .where(Expense.team_id == team.id)
+        .where(Expense.team_id.in_(_visible_team_ids(team.id, user.id)))
         .group_by(Expense.spent_at)
         .order_by(Expense.spent_at)
     ).all()
@@ -47,7 +55,7 @@ def _by_person(
 
 
 @router.get("/people", response_model=PeopleSpendingOut)
-def people_spending(team: TeamDep, session: DbSession) -> PeopleSpendingOut:
+def people_spending(team: TeamDep, user: CurrentUser, session: DbSession) -> PeopleSpendingOut:
     """The same daily history, per person: who paid, and whose share it was.
 
     Current members come first, in the order they joined, so a person keeps
@@ -55,12 +63,13 @@ def people_spending(team: TeamDep, session: DbSession) -> PeopleSpendingOut:
     but still has expenses on the books follows, so the parts always add up
     to the team's spending.
     """
+    team_ids = _visible_team_ids(team.id, user.id)
     paid = _by_person(
         session.execute(
             select(
                 Expense.payer_id, Expense.spent_at, func.sum(Expense.total), func.count(Expense.id)
             )
-            .where(Expense.team_id == team.id)
+            .where(Expense.team_id.in_(team_ids))
             .group_by(Expense.payer_id, Expense.spent_at)
             .order_by(Expense.spent_at)
         ).all()
@@ -74,7 +83,7 @@ def people_spending(team: TeamDep, session: DbSession) -> PeopleSpendingOut:
                 func.count(ExpenseShare.id),
             )
             .join(Expense, Expense.id == ExpenseShare.expense_id)
-            .where(Expense.team_id == team.id)
+            .where(Expense.team_id.in_(team_ids))
             .group_by(ExpenseShare.user_id, Expense.spent_at)
             .order_by(Expense.spent_at)
         ).all()
