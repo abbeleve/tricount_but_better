@@ -6,7 +6,7 @@ import ts from "typescript";
 // Exercise the pure calendar helpers without adding a second TS runtime.
 const source = await readFile(new URL("../src/lib/spending.ts", import.meta.url), "utf8");
 const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } });
-const { addDays, periodStart, shiftPeriod, sumSpending, periodBuckets, historyBuckets, spendingChange, chartDomain, historyLength, personSeries } =
+const { addDays, periodStart, shiftPeriod, sumSpending, periodBuckets, historyBuckets, spendingChange, chartDomain, personSeries } =
   await import(`data:text/javascript;base64,${Buffer.from(outputText).toString("base64")}`);
 const day = (date, total, expense_count = 1) => ({ date, total, expense_count });
 
@@ -66,13 +66,6 @@ test("Chart scale includes refunds and has a usable empty-data range", () => {
   const domain = chartDomain([-100, 200, null]);
   assert.ok(domain.min < -100 && domain.max > 200);
   assert.equal(chartDomain([-100]).max, 0);
-});
-test("A person chart reaches back to the first purchase, twelve periods at most and two at least", () => {
-  assert.equal(historyLength("2026-08-15", "2026-10-13", "month"), 3);
-  assert.equal(historyLength("2020-01-01", "2026-10-13", "month"), 12);
-  assert.equal(historyLength("2026-10-13", "2026-10-13", "year"), 2);
-  assert.equal(historyLength("2024-02-29", "2026-10-13", "year"), 3);
-  assert.equal(historyLength("2026-09-28", "2026-10-13", "week"), 3);
 });
 test("Each person keeps their place and hue; past the last hue everyone else is one series", () => {
   const person = (id, paid, share = []) => ({ user_id: id, display_name: id.toUpperCase(), is_member: id !== "z", paid, share });

@@ -6,34 +6,17 @@ import { useI18n } from "../lib/i18n";
 import { formatMoney } from "../lib/money";
 import {
   SPENDING_PERIODS, historyBuckets, periodBuckets, periodStart,
-  shiftPeriod, spendingChange, sumSpending, type SpendingPeriod,
+  shiftPeriod, sumSpending, type SpendingPeriod,
 } from "../lib/spending";
 import { PeopleSpending } from "./PeopleSpending";
 import { PeriodPicker } from "./Segmented";
 import type { TeamDetail } from "../lib/types";
-import { SpendingComparisonChart, SpendingHistoryChart } from "./SpendingCharts";
+import { SpendingChange, SpendingComparisonChart, SpendingHistoryChart } from "./SpendingCharts";
 import { periodLabel, spendingDate } from "../lib/spending-format";
 import { Button, Card, EmptyState, ErrorState, Money, Skeleton, cx } from "./ui";
 
 const CURRENT = { week: "This week", month: "This month", year: "This year" };
 const PREVIOUS = { week: "Last week", month: "Last month", year: "Last year" };
-
-function Change({ current, previous }: { current: number; previous: number }) {
-  const { t, language } = useI18n();
-  const change = spendingChange(current, previous);
-  const percent = change === null ? "" : new Intl.NumberFormat(language === "ru" ? "ru-RU" : "en-US", {
-    maximumFractionDigits: 1,
-  }).format(Math.abs(change));
-  const difference = current - previous;
-  return <span className={cx(
-    "inline-flex items-center rounded-full px-2 py-1 text-[11px] font-medium",
-    difference > 0 ? "bg-spending-up-soft text-spending-up"
-      : difference < 0 ? "bg-spending-down-soft text-spending-down" : "bg-surface-2 text-muted",
-  )}>
-    {change === null ? t("No previous spending") : change === 0 ? t("No change")
-      : t(change > 0 ? "↑ {percent}% more" : "↓ {percent}% less", { percent })}
-  </span>;
-}
 
 export function SpendingTab({ team }: { team: TeamDetail }) {
   const { t, language } = useI18n();
@@ -89,7 +72,7 @@ export function SpendingTab({ team }: { team: TeamDetail }) {
             className="block w-full p-4 text-left transition-colors hover:bg-surface-2 sm:p-5">
             <span className="block text-[12px] font-medium text-muted">{t(CURRENT[item])}</span>
             <span className="mt-2 block"><Money minor={now} currency={currency} className="break-words text-[24px] font-semibold tracking-tight" /></span>
-            <span className="mt-2 block"><Change current={now} previous={last} /></span>
+            <span className="mt-2 block"><SpendingChange current={now} previous={last} /></span>
             <span className="mt-3 block text-[12px] text-muted">{t("{period}: {amount}", { period: t(PREVIOUS[item]), amount: formatMoney(last, currency) })}</span>
           </button>
         </Card>;
@@ -119,7 +102,7 @@ export function SpendingTab({ team }: { team: TeamDetail }) {
         </div>
         <div className="mb-5 flex flex-wrap items-baseline gap-x-4 gap-y-2">
           <Money minor={current.total} currency={currency} className="text-2xl font-semibold" />
-          <Change current={current.total} previous={previous.total} />
+          <SpendingChange current={current.total} previous={previous.total} />
           <span className="text-[12px] text-muted">{t(current.expenseCount === 1 ? "{count} expense" : "{count} expenses", { count: current.expenseCount })}{isCurrent && ` · ${t("Through {date}", { date: spendingDate(today, language) })}`}</span>
         </div>
         <SpendingComparisonChart key={`${period}-${start}`} current={currentBuckets} previous={previousBuckets} currency={currency} period={period} />
