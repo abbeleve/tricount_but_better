@@ -2,7 +2,7 @@ import { useId, useLayoutEffect, useRef, useState } from "react";
 import { useI18n } from "../lib/i18n";
 import { exponentFor, formatMoney } from "../lib/money";
 import { smoothChartPath } from "../lib/chart-path";
-import { chartDomain, type SpendingBucket, type SpendingPeriod } from "../lib/spending";
+import { chartDomain, spendingChange, type SpendingBucket, type SpendingPeriod } from "../lib/spending";
 import { compactMoney, periodLabel, spendingDate } from "../lib/spending-format";
 import { cx } from "./ui";
 
@@ -30,10 +30,35 @@ function useChartWidth() {
   return [ref, width] as const;
 }
 
-export function SpendingComparisonChart({ current, previous, currency, period, label }: {
+/** Readout date for a bucket: the day, or the month of a year. */
+function bucketDate(bucket: SpendingBucket, period: SpendingPeriod, language: string) {
+  return spendingDate(bucket.start, language, period === "year" ? { day: undefined, month: "long", year: "numeric" } : { year: "numeric" });
+}
+
+/** How this period compares with the last, as a coloured badge. */
+export function SpendingChange({ current, previous }: { current: number; previous: number }) {
+  const { t, language } = useI18n();
+  const change = spendingChange(current, previous);
+  const percent = change === null ? "" : new Intl.NumberFormat(language === "ru" ? "ru-RU" : "en-US", {
+    maximumFractionDigits: 1,
+  }).format(Math.abs(change));
+  const difference = current - previous;
+  return <span className={cx(
+    "inline-flex items-center rounded-full px-2 py-1 text-[11px] font-medium",
+    difference > 0 ? "bg-spending-up-soft text-spending-up"
+      : difference < 0 ? "bg-spending-down-soft text-spending-down" : "bg-surface-2 text-muted",
+  )}>
+    {change === null ? t("No previous spending") : change === 0 ? t("No change")
+      : t(change > 0 ? "↑ {percent}% more" : "↓ {percent}% less", { percent })}
+  </span>;
+}
+
+export function SpendingComparisonChart({ current, previous, currency, period, label, color = "var(--chart-spending)" }: {
   current: SpendingBucket[]; previous: SpendingBucket[]; currency: string; period: SpendingPeriod;
   /** What the chart shows, for its accessible name; spending by default. */
   label?: string;
+  /** The selected period's hue; a person's own when the chart is about one person. */
+  color?: string;
 }) {
   const { t, language } = useI18n();
   const title = label ?? t("Spending comparison chart");
@@ -66,7 +91,7 @@ export function SpendingComparisonChart({ current, previous, currency, period, l
     <div>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-[12px] text-muted">
         <div className="flex flex-wrap items-center gap-4">
-          <span className="inline-flex items-center gap-2"><span className="h-0.5 w-5 bg-chart-spending" />{t("Selected period")}</span>
+          <span className="inline-flex items-center gap-2"><span className="h-0.5 w-5" style={{ background: color }} />{t("Selected period")}</span>
           <span className="inline-flex items-center gap-2"><span className="w-5 border-t-2 border-dashed border-muted" />{t("Previous period")}</span>
         </div>
         <span>{currency} · {t(period === "year" ? "Monthly totals" : "Daily totals")}</span>
@@ -76,11 +101,11 @@ export function SpendingComparisonChart({ current, previous, currency, period, l
           <title>{title}</title>
           <defs>
             <linearGradient id={`${id}-fill`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--chart-spending)" stopOpacity="0.2" />
-              <stop offset="100%" stopColor="var(--chart-spending)" stopOpacity="0.02" />
+              <stop offset="0%" stopColor={color} stopOpacity="0.2" />
+              <stop offset="100%" stopColor={color} stopOpacity="0.02" />
             </linearGradient>
             <pattern id={`${id}-dots`} width="7" height="7" patternUnits="userSpaceOnUse">
-              <circle cx="2" cy="2" r="0.85" fill="var(--chart-spending)" opacity="0.35" />
+              <circle cx="2" cy="2" r="0.85" fill={color} opacity="0.35" />
             </pattern>
           </defs>
           {ticks.map((tick, i) => (
@@ -93,10 +118,10 @@ export function SpendingComparisonChart({ current, previous, currency, period, l
           <path d={area} fill={`url(#${id}-fill)`} />
           <path d={area} fill={`url(#${id}-dots)`} />
           <path d={path(previous)} fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeDasharray="5 5" strokeLinejoin="round" strokeLinecap="round" />
-          <path d={path(current)} fill="none" stroke="var(--chart-spending)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-          {currentPoints.length === 1 && <circle cx={currentPoints[0].x} cy={currentPoints[0].y} r="4" fill="var(--chart-spending)" />}
+          <path d={path(current)} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+          {currentPoints.length === 1 && <circle cx={currentPoints[0].x} cy={currentPoints[0].y} r="4" fill={color} />}
           <line x1={x(selected)} x2={x(selected)} y1={top} y2={bottom} stroke="var(--border-strong)" strokeDasharray="3 4" />
-          {a?.total !== null && a?.total !== undefined && <circle cx={x(selected)} cy={y(a.total)} r="4" fill="var(--chart-spending)" stroke="var(--surface)" strokeWidth="2" />}
+          {a?.total !== null && a?.total !== undefined && <circle cx={x(selected)} cy={y(a.total)} r="4" fill={color} stroke="var(--surface)" strokeWidth="2" />}
           {Array.from({ length: count }, (_, i) => {
             const bucket = current[i] ?? previous[i];
             return (
@@ -114,12 +139,12 @@ export function SpendingComparisonChart({ current, previous, currency, period, l
         </svg>
       </div>
       <div className="mt-3 grid gap-2 rounded-control bg-surface-2 px-3 py-2.5 text-[12px] sm:grid-cols-2" aria-live="polite" aria-atomic="true">
-        <p className="min-w-0 text-muted"><span className="mr-2 inline-block size-2 rounded-full bg-chart-spending" />
-          {a ? spendingDate(a.start, language, period === "year" ? { day: undefined, month: "long", year: "numeric" } : { year: "numeric" }) : t("No matching day")}
+        <p className="min-w-0 text-muted"><span className="mr-2 inline-block size-2 rounded-full" style={{ background: color }} />
+          {a ? bucketDate(a, period, language) : t("No matching day")}
           <span className="ml-2 tabular font-medium text-body">{value(a)}</span>
         </p>
         <p className="min-w-0 text-muted"><span className="mr-2 inline-block w-3 border-t-2 border-dashed border-muted" />
-          {b ? spendingDate(b.start, language, period === "year" ? { day: undefined, month: "long", year: "numeric" } : { year: "numeric" }) : t("No matching day")}
+          {b ? bucketDate(b, period, language) : t("No matching day")}
           <span className="ml-2 tabular font-medium text-body">{value(b)}</span>
         </p>
       </div>
@@ -192,52 +217,53 @@ export interface PersonLine {
   buckets: SpendingBucket[];
 }
 
-function historyTick(bucket: SpendingBucket, period: SpendingPeriod, language: string) {
-  return period === "year" ? bucket.start.slice(0, 4)
-    : period === "month" ? spendingDate(bucket.start, language, { day: undefined, month: "short" })
-      : spendingDate(bucket.start, language);
-}
-
 /**
- * One line per person over consecutive periods, on one shared scale.
+ * One line per person over the days (or, for a year, months) of one period,
+ * drawn like the comparison chart and on one shared scale.
  *
  * Identity is the line's hue, and never only that: the legend names every
- * line, and the caller lists each person's amount for the chosen period.
- * Choosing a column moves the crosshair and tells the caller which period.
+ * line, and the readout lists each person's amount for the chosen day.
+ * Choosing a name in the legend asks the caller to show that person alone.
  */
-export function PeopleSpendingChart({ lines, period, currency, selected, onSelect, label }: {
-  lines: PersonLine[]; period: SpendingPeriod; currency: string;
-  selected: number; onSelect: (index: number) => void; label: string;
+export function PeopleSpendingChart({ lines, period, currency, label, onPick }: {
+  lines: PersonLine[]; period: SpendingPeriod; currency: string; label: string;
+  onPick: (id: string) => void;
 }) {
   const { t, language } = useI18n();
-  const [box, chartWidth] = useChartWidth();
   const columns = lines[0]?.buckets ?? [];
   const count = columns.length;
+  const [selected, setSelected] = useState(Math.max(0, columns.filter((b) => b.total !== null).length - 1));
+  const [scroller, chartWidth] = useChartWidth();
   const values = lines.flatMap((line) => line.buckets.map((b) => b.total));
   const domain = chartDomain(values);
   const min = domain.min;
   const max = values.every((value) => value === null || value === 0) ? 10 ** exponentFor(currency) : domain.max;
-  const left = 76, right = chartWidth - 16, top = 14, bottom = 196;
+  const left = 80, right = chartWidth - 20, top = 18, bottom = 222;
   const gap = (right - left) / Math.max(1, count - 1);
   const x = (i: number) => left + i * gap;
   const y = (value: number) => bottom - (value - min) / (max - min) * (bottom - top);
   const ticks = Array.from({ length: 4 }, (_, i) => min + (max - min) * i / 3);
-  // Label from the newest period back, so the current one always has its name.
-  const step = Math.max(1, Math.ceil((period === "week" ? 50 : 36) / gap));
-  const labelled = (i: number) => (count - 1 - i) % step === 0;
-  const firstLabelled = columns.findIndex((_, i) => labelled(i));
-  const amount = (bucket: SpendingBucket | undefined) => formatMoney(bucket?.total ?? 0, currency);
+  const step = period === "month" ? 5 : period === "year" && chartWidth < 480 ? 3 : 1;
+  const column = columns[selected];
+  const value = (bucket: SpendingBucket | undefined) => !bucket ? t("No matching day")
+    : bucket.total === null ? t("Not yet") : formatMoney(bucket.total, currency);
 
   return (
     <div>
-      {lines.length > 1 && <ul className="mb-3 flex flex-wrap gap-x-4 gap-y-1.5 text-[12px] text-muted" aria-label={t("Legend")}>
-        {lines.map((line) => <li key={line.id} className="inline-flex min-w-0 items-center gap-2">
-          <span className="h-0.5 w-4 shrink-0 rounded-full" style={{ background: line.color }} />
-          <span className="truncate">{line.name}</span>
-        </li>)}
-      </ul>}
-      <div ref={box}>
-        <svg viewBox={`0 0 ${chartWidth} 238`} className="block w-full min-w-[240px]" role="group" aria-label={label}>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-[12px] text-muted">
+        <ul className="flex flex-wrap items-center gap-x-1 gap-y-1" aria-label={t("Legend")}>
+          {lines.map((line) => <li key={line.id} className="min-w-0">
+            <button type="button" onClick={() => onPick(line.id)} aria-label={t("Show only {name}", { name: line.name })}
+              className="inline-flex min-w-0 items-center gap-2 rounded-control px-1.5 py-1 hover:bg-surface-2 hover:text-body">
+              <span className="h-0.5 w-5 shrink-0 rounded-full" style={{ background: line.color }} />
+              <span className="truncate">{line.name}</span>
+            </button>
+          </li>)}
+        </ul>
+        <span>{currency} · {t(period === "year" ? "Monthly totals" : "Daily totals")}</span>
+      </div>
+      <div ref={scroller} className="overflow-x-auto">
+        <svg viewBox={`0 0 ${chartWidth} 258`} className="block w-full min-w-[240px]" role="group" aria-label={label}>
           <title>{label}</title>
           {ticks.map((tick, i) => (
             <g key={i}>
@@ -246,31 +272,44 @@ export function PeopleSpendingChart({ lines, period, currency, selected, onSelec
             </g>
           ))}
           {min < 0 && <line x1={left} x2={right} y1={y(0)} y2={y(0)} stroke="var(--border-strong)" />}
-          {count > 0 && <line x1={x(selected)} x2={x(selected)} y1={top} y2={bottom} stroke="var(--border-strong)" strokeDasharray="3 4" />}
-          {lines.map((line) => <path key={line.id} fill="none" stroke={line.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"
-            d={smoothChartPath(line.buckets.flatMap((b, i) => b.total === null ? [] : [{ x: x(i), y: y(b.total) }]))} />)}
           {lines.map((line) => {
-            const value = line.buckets[selected]?.total;
-            return value === null || value === undefined ? null
-              : <circle key={line.id} cx={x(selected)} cy={y(value)} r="4" fill={line.color} stroke="var(--surface)" strokeWidth="2" />;
+            const points = line.buckets.flatMap((b, i) => b.total === null ? [] : [{ x: x(i), y: y(b.total) }]);
+            return <g key={line.id}>
+              <path d={smoothChartPath(points)} fill="none" stroke={line.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+              {points.length === 1 && <circle cx={points[0].x} cy={points[0].y} r="3" fill={line.color} />}
+            </g>;
           })}
-          {columns.map((bucket, i) => {
-            const year = bucket.start.slice(0, 4);
-            const newYear = period !== "year" && (i === firstLabelled || year !== columns[i - step]?.start.slice(0, 4));
-            return (
-              <g key={bucket.start}>
-                {labelled(i) && <text x={x(i)} y="218" textAnchor="middle" fill={i === selected ? "var(--text)" : "var(--text-muted)"} fontSize="11">{historyTick(bucket, period, language)}</text>}
-                {labelled(i) && newYear && <text x={x(i)} y="232" textAnchor="middle" fill="var(--text-subtle)" fontSize="10">{year}</text>}
-                <rect x={Math.max(left - 8, x(i) - gap / 2)} y={top} width={gap} height={bottom - top} fill="transparent"
-                  role="button" tabIndex={0} aria-pressed={selected === i}
-                  aria-label={`${periodLabel(bucket.start, bucket.end, period, language)}: ${lines.map((line) => `${line.name} ${amount(line.buckets[i])}`).join("; ")}`}
-                  className="cursor-pointer [&:focus:not(:focus-visible)]:outline-none" onMouseEnter={() => onSelect(i)} onFocus={() => onSelect(i)} onClick={() => onSelect(i)}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(i); } }} />
-              </g>
-            );
+          {count > 0 && <line x1={x(selected)} x2={x(selected)} y1={top} y2={bottom} stroke="var(--border-strong)" strokeDasharray="3 4" />}
+          {lines.map((line) => {
+            const total = line.buckets[selected]?.total;
+            return total === null || total === undefined ? null
+              : <circle key={line.id} cx={x(selected)} cy={y(total)} r="4" fill={line.color} stroke="var(--surface)" strokeWidth="2" />;
           })}
+          {columns.map((bucket, i) => (
+            <g key={bucket.start}>
+              {(i % step === 0 || i === count - 1) && <text x={x(i)} y="247" textAnchor="middle" fill="var(--text-muted)" fontSize="11">{bucketLabel(bucket, period, language)}</text>}
+              <rect x={Math.max(left - 8, x(i) - gap / 2)} y={top} width={gap} height={bottom - top} fill="transparent"
+                role="button" tabIndex={0} aria-pressed={selected === i}
+                aria-label={`${bucketLabel(bucket, period, language)}: ${lines.map((line) => `${line.name} ${value(line.buckets[i])}`).join("; ")}`}
+                className="cursor-pointer [&:focus:not(:focus-visible)]:outline-none" onMouseEnter={() => setSelected(i)} onFocus={() => setSelected(i)} onClick={() => setSelected(i)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelected(i); } }} />
+            </g>
+          ))}
         </svg>
       </div>
+      {column && <div className="mt-3 rounded-control bg-surface-2 px-3 py-2.5 text-[12px]" aria-live="polite" aria-atomic="true">
+        <p className="mb-1.5 text-muted">{bucketDate(column, period, language)}</p>
+        <ul className="grid gap-x-6 gap-y-1 sm:grid-cols-[repeat(auto-fill,minmax(12rem,1fr))]">
+          {lines.map((line) => <li key={line.id} className="flex min-w-0 items-baseline justify-between gap-3 text-muted">
+            <span className="flex min-w-0 items-baseline gap-2">
+              <span className="inline-block size-2 shrink-0 self-center rounded-full" style={{ background: line.color }} />
+              <span className="truncate">{line.name}</span>
+            </span>
+            <span className="shrink-0 tabular font-medium text-body">{value(line.buckets[selected])}</span>
+          </li>)}
+        </ul>
+      </div>}
+      <p className="mt-2 text-[11px] text-muted">{t("Tap or focus a point to see exact amounts. Future dates are left blank.")}</p>
     </div>
   );
 }

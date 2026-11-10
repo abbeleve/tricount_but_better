@@ -88,19 +88,6 @@ export function chartDomain(values: (number | null)[]): { min: number; max: numb
 export type SpendingMeasure = "paid" | "share";
 export const SPENDING_MEASURES: SpendingMeasure[] = ["share", "paid"];
 
-/** Periods to show up to `last`: back to the first purchase, so a young team's
- * chart is not mostly empty, but at least two, so every line has two ends. */
-export function historyLength(earliest: string, last: string, period: SpendingPeriod, max = 12): number {
-  const first = periodStart(earliest, period);
-  let start = periodStart(last, period);
-  let count = 1;
-  while (count < max && start > first) {
-    start = shiftPeriod(start, period, -1);
-    count++;
-  }
-  return Math.max(2, count);
-}
-
 export interface SpendingSeries {
   /** A user id, or "others" for everyone folded together past the last hue. */
   id: string;
